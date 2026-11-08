@@ -1,10 +1,10 @@
 # APEX — Lead Follow-up Prioritization Intelligence
 
-**Case ID:** AA007  
-**Assignment:** Lead Follow-up Prioritization Intelligence  
-**Domain:** Sales Operations  
-**Product:** APEX — Lead Intelligence Platform  
-**Version:** 1.0.0  
+**Case ID:** AA007
+**Assignment:** Lead Follow-up Prioritization Intelligence
+**Domain:** Sales Operations
+**Product:** APEX — Lead Intelligence Platform
+**Version:** 1.0.0
 **Phase:** 1 — Deterministic Agentic MVP
 
 ## 1. Overview

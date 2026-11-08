@@ -1155,8 +1155,8 @@ httpx
 <file path="docs/architecture.md">
 # APEX — System Architecture
 
-**Case ID:** AA007  
-**Product:** APEX — Lead Intelligence Platform  
+**Case ID:** AA007
+**Product:** APEX — Lead Intelligence Platform
 **Architecture Version:** 1.0
 
 ## 1. Architecture Overview
@@ -2998,11 +2998,11 @@ repomix-output.xml
 <file path="README.md">
 # APEX — Lead Follow-up Prioritization Intelligence
 
-**Case ID:** AA007  
-**Assignment:** Lead Follow-up Prioritization Intelligence  
-**Domain:** Sales Operations  
-**Product:** APEX — Lead Intelligence Platform  
-**Version:** 1.0.0  
+**Case ID:** AA007
+**Assignment:** Lead Follow-up Prioritization Intelligence
+**Domain:** Sales Operations
+**Product:** APEX — Lead Intelligence Platform
+**Version:** 1.0.0
 **Phase:** 1 — Deterministic Agentic MVP
 
 ## 1. Overview

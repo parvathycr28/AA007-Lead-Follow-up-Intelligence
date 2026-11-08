@@ -1,7 +1,7 @@
 # APEX — System Architecture
 
-**Case ID:** AA007  
-**Product:** APEX — Lead Intelligence Platform  
+**Case ID:** AA007
+**Product:** APEX — Lead Intelligence Platform
 **Architecture Version:** 1.0
 
 ## 1. Architecture Overview
