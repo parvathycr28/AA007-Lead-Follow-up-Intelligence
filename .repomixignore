@@ -1,0 +1,29 @@
+# Git metadata
+.git/
+
+# Python environments and caches
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# Node dependencies and build output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+
+# Environment files and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs and temporary files
+**/*.log
+**/*.tmp
+**/*.bak
+
+# Repomix output itself
+repomix-output.xml
