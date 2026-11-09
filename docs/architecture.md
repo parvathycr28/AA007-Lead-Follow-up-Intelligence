@@ -8,11 +8,11 @@
 
 APEX follows a deterministic multi-agent workflow architecture.
 
-A lead record enters through the API, is validated by the Lead Intake Agent, and is evaluated by four subsequent agents. Their outputs are maintained in a run-scoped workflow context.
+A lead record enters through the API, and the Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the Recency, Engagement, and Fit & SLA Agents evaluate their respective business evidence.
 
 The Lead Priority Decision Agent combines the outputs and applies deterministic business rules to generate a recommendation.
 
-The workflow then produces an explanation and an audit record.
+The workflow then produces a structured explanation and an audit record. The frontend exposes the business input, run-scoped shared workflow context, agent execution order and outputs, decision evidence, final recommendation, explanation, and audit reference so reviewers can inspect how each recommendation is produced.
 
 ## 2. High-Level Workflow
 

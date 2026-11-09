@@ -392,110 +392,6 @@ class RecencyAgent:
         return result
 </file>
 
-<file path="backend/app/api/routes/leads.py">
-from fastapi import APIRouter, HTTPException
-
-from app.models.api import (
-    PrioritizationRequest,
-    PrioritizationResponse,
-)
-
-from app.services.workflow_service import WorkflowService
-from app.services.audit_service import AuditService
-from app.data.seed_leads import get_seed_scenarios
-
-router = APIRouter(
-    prefix="/api/leads",
-    tags=["Lead Prioritization"],
-)
-
-
-def build_workflow_response(context, scenario=None):
-    audit_record = None
-
-    if context.audit_reference:
-        record = AuditService.get(context.audit_reference)
-
-        if record:
-            audit_record = record.model_dump(mode="json")
-
-    response = {
-        "workflow_id": context.workflow_id,
-        "lead_id": context.lead_record.lead_id,
-        "recommendation": context.final_recommendation or {},
-        "explanation": context.explanation,
-        "audit_reference": context.audit_reference,
-        "workflow_context": context.model_dump(mode="json"),
-        "audit_record": audit_record,
-        "errors": context.errors,
-    }
-
-    if scenario is not None:
-        response["scenario"] = scenario
-
-    return response
-
-
-@router.post(
-    "/prioritize",
-    response_model=PrioritizationResponse,
-)
-def prioritize_lead(
-    request: PrioritizationRequest,
-):
-    try:
-        context = WorkflowService.execute(
-            lead_record=request.lead,
-            engagement_events=request.engagement_events,
-        )
-
-        return PrioritizationResponse(
-            **build_workflow_response(context)
-        )
-
-    except Exception as exc:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Lead prioritization failed: {str(exc)}",
-        )
-
-
-@router.get("/scenarios")
-def list_scenarios():
-    scenarios = get_seed_scenarios()
-
-    return {
-        name: {
-            "description": data["description"],
-            "lead_id": data["lead"].lead_id,
-        }
-        for name, data in scenarios.items()
-    }
-
-
-@router.post("/scenarios/{scenario_name}/run")
-def run_scenario(scenario_name: str):
-    scenarios = get_seed_scenarios()
-
-    if scenario_name not in scenarios:
-        raise HTTPException(
-            status_code=404,
-            detail="Scenario not found.",
-        )
-
-    scenario = scenarios[scenario_name]
-
-    context = WorkflowService.execute(
-        lead_record=scenario["lead"],
-        engagement_events=scenario["engagement_events"],
-    )
-
-    return build_workflow_response(
-        context,
-        scenario=scenario_name,
-    )
-</file>
-
 <file path="backend/app/api/__init__.py">
 
 </file>
@@ -633,42 +529,6 @@ class LeadPriorityOutput(BaseModel):
     action: str
     triggered_rules: List[str] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
-</file>
-
-<file path="backend/app/models/api.py">
-from typing import Any, Dict, List, Optional
-
-from pydantic import BaseModel, Field
-
-from app.models.lead import LeadRecord, EngagementEvent
-
-
-class PrioritizationRequest(BaseModel):
-    lead: LeadRecord
-    engagement_events: List[EngagementEvent] = Field(
-        default_factory=list
-    )
-
-
-class PrioritizationResponse(BaseModel):
-    workflow_id: str
-    lead_id: str
-
-    recommendation: Dict[str, Any]
-
-    explanation: Optional[Dict[str, Any]] = None
-
-    audit_reference: Optional[str] = None
-
-    workflow_context: Dict[str, Any] = Field(
-        default_factory=dict
-    )
-
-    audit_record: Optional[Dict[str, Any]] = None
-
-    errors: List[str] = Field(
-        default_factory=list
-    )
 </file>
 
 <file path="backend/app/models/audit.py">
@@ -1211,6 +1071,493 @@ httpx
 
 <file path="frontend/src/assets/vite.svg">
 <svg xmlns="http://www.w3.org/2000/svg" width="77" height="47" fill="none" aria-labelledby="vite-logo-title" viewBox="0 0 77 47"><title id="vite-logo-title">Vite</title><style>.parenthesis{fill:#000}@media (prefers-color-scheme:dark){.parenthesis{fill:#fff}}</style><path fill="#9135ff" d="M40.151 45.71c-.663.844-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.493c-.92 0-1.457-1.04-.92-1.788l7.479-10.471c1.07-1.498 0-3.578-1.842-3.578H15.443c-.92 0-1.456-1.04-.92-1.788l9.696-13.576c.213-.297.556-.474.92-.474h28.894c.92 0 1.456 1.04.92 1.788l-7.48 10.472c-1.07 1.497 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.087.89 1.83L40.153 45.712z"/><mask id="a" width="48" height="47" x="14" y="0" maskUnits="userSpaceOnUse" style="mask-type:alpha"><path fill="#000" d="M40.047 45.71c-.663.843-2.02.374-2.02-.699V34.708a2.26 2.26 0 0 0-2.262-2.262H24.389c-.92 0-1.457-1.04-.92-1.788l7.479-10.472c1.07-1.497 0-3.578-1.842-3.578H15.34c-.92 0-1.456-1.04-.92-1.788l9.696-13.575c.213-.297.556-.474.92-.474H53.93c.92 0 1.456 1.04.92 1.788L47.37 13.03c-1.07 1.498 0 3.578 1.842 3.578h11.376c.944 0 1.474 1.088.89 1.831L40.049 45.712z"/></mask><g mask="url(#a)"><g filter="url(#b)"><ellipse cx="5.508" cy="14.704" fill="#eee6ff" rx="5.508" ry="14.704" transform="rotate(269.814 20.96 11.29)scale(-1 1)"/></g><g filter="url(#c)"><ellipse cx="10.399" cy="29.851" fill="#eee6ff" rx="10.399" ry="29.851" transform="rotate(89.814 -16.902 -8.275)scale(1 -1)"/></g><g filter="url(#d)"><ellipse cx="5.508" cy="30.487" fill="#8900ff" rx="5.508" ry="30.487" transform="rotate(89.814 -19.197 -7.127)scale(1 -1)"/></g><g filter="url(#e)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.928 4.177)scale(1 -1)"/></g><g filter="url(#f)"><ellipse cx="5.508" cy="30.599" fill="#8900ff" rx="5.508" ry="30.599" transform="rotate(89.814 -25.738 5.52)scale(1 -1)"/></g><g filter="url(#g)"><ellipse cx="14.072" cy="22.078" fill="#eee6ff" rx="14.072" ry="22.078" transform="rotate(93.35 31.245 55.578)scale(-1 1)"/></g><g filter="url(#h)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#i)"><ellipse cx="3.47" cy="21.501" fill="#8900ff" rx="3.47" ry="21.501" transform="rotate(89.009 35.419 55.202)scale(-1 1)"/></g><g filter="url(#j)"><ellipse cx="14.592" cy="9.743" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(39.51 14.592 9.743)"/></g><g filter="url(#k)"><ellipse cx="61.728" cy="-5.321" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 61.728 -5.32)"/></g><g filter="url(#l)"><ellipse cx="55.618" cy="7.104" fill="#00c2ff" rx="5.971" ry="9.665" transform="rotate(37.892 55.618 7.104)"/></g><g filter="url(#m)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#n)"><ellipse cx="12.326" cy="39.103" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 12.326 39.103)"/></g><g filter="url(#o)"><ellipse cx="49.857" cy="30.678" fill="#8900ff" rx="4.407" ry="29.108" transform="rotate(37.892 49.857 30.678)"/></g><g filter="url(#p)"><ellipse cx="52.623" cy="33.171" fill="#00c2ff" rx="5.971" ry="15.297" transform="rotate(37.892 52.623 33.17)"/></g></g><path d="M6.919 0c-9.198 13.166-9.252 33.575 0 46.789h6.215c-9.25-13.214-9.196-33.623 0-46.789zm62.424 0h-6.215c9.198 13.166 9.252 33.575 0 46.789h6.215c9.25-13.214 9.196-33.623 0-46.789" class="parenthesis"/><defs><filter id="b" width="60.045" height="41.654" x="-5.564" y="16.92" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="c" width="90.34" height="51.437" x="-40.407" y="-6.762" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="d" width="79.355" height="29.4" x="-35.435" y="2.801" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="e" width="79.579" height="29.4" x="-30.84" y="20.8" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="f" width="79.579" height="29.4" x="-29.307" y="21.949" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="g" width="74.749" height="58.852" x="29.961" y="-17.13" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="7.659"/></filter><filter id="h" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="i" width="61.377" height="25.362" x="37.754" y="3.055" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="j" width="56.045" height="63.649" x="-13.43" y="-22.082" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="k" width="54.814" height="64.646" x="34.321" y="-37.644" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="l" width="33.541" height="35.313" x="38.847" y="-10.552" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="m" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="n" width="54.814" height="64.646" x="-15.081" y="6.78" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="o" width="54.814" height="64.646" x="22.45" y="-1.645" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter><filter id="p" width="39.409" height="43.623" x="32.919" y="11.36" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse"><feFlood flood-opacity="0" result="BackgroundImageFix"/><feBlend in="SourceGraphic" in2="BackgroundImageFix" result="shape"/><feGaussianBlur result="effect1_foregroundBlur_2002_17286" stdDeviation="4.596"/></filter></defs></svg>
+</file>
+
+<file path="frontend/src/main.tsx">
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.tsx'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+</file>
+
+<file path="frontend/.gitignore">
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+</file>
+
+<file path="frontend/eslint.config.js">
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
+import { defineConfig, globalIgnores } from 'eslint/config'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      js.configs.recommended,
+      tseslint.configs.recommended,
+      reactHooks.configs.flat.recommended,
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
+])
+</file>
+
+<file path="frontend/index.html">
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+</file>
+
+<file path="frontend/package.json">
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.6"
+  }
+}
+</file>
+
+<file path="frontend/README.md">
+# React + TypeScript + Vite
+
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+
+Currently, two official plugins are available:
+
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
+```
+
+You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
+```
+</file>
+
+<file path="frontend/tsconfig.app.json">
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+</file>
+
+<file path="frontend/tsconfig.json">
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+</file>
+
+<file path="frontend/tsconfig.node.json">
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["vite.config.ts"]
+}
+</file>
+
+<file path="frontend/vite.config.ts">
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5174,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8002',
+        changeOrigin: true,
+      },
+    },
+  },
+})
+</file>
+
+<file path=".gitignore">
+# Python environments
+.venv/
+venv/
+env/
+
+# Python cache and test files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node dependencies and builds
+node_modules/
+dist/
+dist-ssr/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE settings
+.vscode/
+.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+</file>
+
+<file path=".repomixignore">
+# Git metadata
+.git/
+
+# Python environments and caches
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# Node dependencies and build output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+
+# Environment files and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs and temporary files
+**/*.log
+**/*.tmp
+**/*.bak
+
+# Repomix output itself
+repomix-output.xml
+</file>
+
+<file path="backend/app/api/routes/leads.py">
+from fastapi import APIRouter, HTTPException
+
+from app.models.api import (
+    PrioritizationRequest,
+    PrioritizationResponse,
+)
+
+from app.services.workflow_service import WorkflowService
+from app.services.audit_service import AuditService
+from app.data.seed_leads import get_seed_scenarios
+
+router = APIRouter(
+    prefix="/api/leads",
+    tags=["Lead Prioritization"],
+)
+
+
+def build_workflow_response(context, scenario=None):
+    audit_record = None
+
+    if context.audit_reference:
+        record = AuditService.get(context.audit_reference)
+
+        if record:
+            audit_record = record.model_dump(mode="json")
+
+    response = {
+        "workflow_id": context.workflow_id,
+        "lead_id": context.lead_record.lead_id,
+        "recommendation": context.final_recommendation or {},
+        "explanation": context.explanation,
+        "audit_reference": context.audit_reference,
+        "workflow_context": context.model_dump(mode="json"),
+        "audit_record": audit_record,
+        "errors": context.errors,
+    }
+
+    if scenario is not None:
+        response["scenario"] = scenario
+
+    return response
+
+
+@router.post(
+    "/prioritize",
+    response_model=PrioritizationResponse,
+)
+def prioritize_lead(
+    request: PrioritizationRequest,
+):
+    try:
+        context = WorkflowService.execute(
+            lead_record=request.lead,
+            engagement_events=request.engagement_events,
+        )
+
+        return PrioritizationResponse(
+            **build_workflow_response(context)
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lead prioritization failed: {str(exc)}",
+        )
+
+
+@router.get("/scenarios")
+def list_scenarios():
+    scenarios = get_seed_scenarios()
+
+    return {
+        name: {
+            "description": data["description"],
+            "lead_id": data["lead"].lead_id,
+        }
+        for name, data in scenarios.items()
+    }
+
+
+@router.post("/scenarios/{scenario_name}/run")
+def run_scenario(scenario_name: str):
+    scenarios = get_seed_scenarios()
+
+    if scenario_name not in scenarios:
+        raise HTTPException(
+            status_code=404,
+            detail="Scenario not found.",
+        )
+
+    scenario = scenarios[scenario_name]
+
+    context = WorkflowService.execute(
+        lead_record=scenario["lead"],
+        engagement_events=scenario["engagement_events"],
+    )
+
+    return build_workflow_response(
+        context,
+        scenario=scenario_name,
+    )
+</file>
+
+<file path="backend/app/models/api.py">
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field
+
+from app.models.lead import LeadRecord, EngagementEvent
+
+
+class PrioritizationRequest(BaseModel):
+    lead: LeadRecord
+    engagement_events: List[EngagementEvent] = Field(
+        default_factory=list
+    )
+
+
+class PrioritizationResponse(BaseModel):
+    workflow_id: str
+    lead_id: str
+
+    recommendation: Dict[str, Any]
+
+    explanation: Optional[Dict[str, Any]] = None
+
+    audit_reference: Optional[str] = None
+
+    workflow_context: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    audit_record: Optional[Dict[str, Any]] = None
+
+    errors: List[str] = Field(
+        default_factory=list
+    )
 </file>
 
 <file path="frontend/src/App.css">
@@ -2768,550 +3115,6 @@ select {
 }
 </file>
 
-<file path="frontend/src/main.tsx">
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.tsx'
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
-</file>
-
-<file path="frontend/.gitignore">
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-</file>
-
-<file path="frontend/eslint.config.js">
-import js from '@eslint/js'
-import globals from 'globals'
-import reactHooks from 'eslint-plugin-react-hooks'
-import reactRefresh from 'eslint-plugin-react-refresh'
-import tseslint from 'typescript-eslint'
-import { defineConfig, globalIgnores } from 'eslint/config'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs.flat.recommended,
-      reactRefresh.configs.vite,
-    ],
-    languageOptions: {
-      globals: globals.browser,
-    },
-  },
-])
-</file>
-
-<file path="frontend/index.html">
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>
-</file>
-
-<file path="frontend/package.json">
-{
-  "name": "frontend",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
-  },
-  "devDependencies": {
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^24.19.2",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "eslint": "^10.14.0",
-    "eslint-plugin-react-hooks": "^7.1.1",
-    "eslint-plugin-react-refresh": "^0.5.7",
-    "globals": "^17.13.0",
-    "typescript": "~6.0.3",
-    "typescript-eslint": "^8.72.1",
-    "vite": "^8.3.6"
-  }
-}
-</file>
-
-<file path="frontend/README.md">
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
-</file>
-
-<file path="frontend/tsconfig.app.json">
-{
-  "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
-    "target": "es2023",
-    "lib": ["ES2023", "DOM"],
-    "module": "esnext",
-    "types": ["vite/client"],
-    "allowArbitraryExtensions": true,
-    "skipLibCheck": true,
-
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
-  },
-  "include": ["src"]
-}
-</file>
-
-<file path="frontend/tsconfig.json">
-{
-  "files": [],
-  "references": [
-    { "path": "./tsconfig.app.json" },
-    { "path": "./tsconfig.node.json" }
-  ]
-}
-</file>
-
-<file path="frontend/tsconfig.node.json">
-{
-  "compilerOptions": {
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
-    "target": "es2023",
-    "lib": ["ES2023"],
-    "types": ["node"],
-    "skipLibCheck": true,
-
-    /* Bundler mode */
-    "module": "nodenext",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "moduleDetection": "force",
-    "noEmit": true,
-
-    /* Linting */
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
-  },
-  "include": ["vite.config.ts"]
-}
-</file>
-
-<file path="frontend/vite.config.ts">
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5174,
-    proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8002',
-        changeOrigin: true,
-      },
-    },
-  },
-})
-</file>
-
-<file path=".gitignore">
-# Python environments
-.venv/
-venv/
-env/
-
-# Python cache and test files
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Node dependencies and builds
-node_modules/
-dist/
-dist-ssr/
-
-# Environment variables and secrets
-.env
-.env.*
-!.env.example
-
-# Logs
-*.log
-npm-debug.log*
-
-# IDE settings
-.vscode/
-.idea/
-
-# Operating system files
-.DS_Store
-Thumbs.db
-
-# Temporary files
-*.tmp
-*.bak
-</file>
-
-<file path=".repomixignore">
-# Git metadata
-.git/
-
-# Python environments and caches
-**/.venv/
-**/venv/
-**/env/
-**/__pycache__/
-**/.pytest_cache/
-**/.coverage
-**/htmlcov/
-
-# Node dependencies and build output
-**/node_modules/
-**/dist/
-**/dist-ssr/
-
-# Environment files and secrets
-**/.env
-**/.env.*
-!**/.env.example
-
-# Logs and temporary files
-**/*.log
-**/*.tmp
-**/*.bak
-
-# Repomix output itself
-repomix-output.xml
-</file>
-
-<file path="docs/architecture.md">
-# Lead Follow-up Prioritization Intelligence
-
-**Product:** APEX — Lead Intelligence Platform
-**Case ID:** AA007
-**Architecture Version:** 1.0
-
-## 1. Architecture Overview
-
-APEX follows a deterministic multi-agent workflow architecture.
-
-A lead record enters through the API, is validated by the Lead Intake Agent, and is evaluated by four subsequent agents. Their outputs are maintained in a run-scoped workflow context.
-
-The Lead Priority Decision Agent combines the outputs and applies deterministic business rules to generate a recommendation.
-
-The workflow then produces an explanation and an audit record.
-
-## 2. High-Level Workflow
-
-```text
-User / Frontend
-       |
-       v
-FastAPI Endpoint
-       |
-       v
-Context Builder
-       |
-       v
-Run-Scoped Shared Workflow Context
-       |
-       v
-Lead Intake Agent
-       |
-       +--------------------+
-       |                    |
-       v                    v
-   Valid Input          Invalid Input
-       |                    |
-       v                    v
- Recency Agent          REQUEST_DATA
-       |                    |
-       v                    |
- Engagement Agent           |
-       |                    |
-       v                    |
- Fit & SLA Agent             |
-       |                    |
-       v                    |
- Lead Priority Decision     |
-       |                    |
-       +--------------------+
-                 |
-                 v
-          Final Recommendation
-                 |
-          +------+------+
-          |             |
-          v             v
-     Explanation      Audit
-       Service       Service
-          |             |
-          +------+------+
-                 |
-                 v
-            API Response
-                 |
-                 v
-              Frontend
-```
-
-## 3. Agent Responsibilities
-
-### 3.1 Lead Intake Agent
-
-- Validates mandatory lead information.
-- Normalizes lead fields.
-- Identifies missing or invalid information.
-- Produces validated lead data.
-
-### 3.2 Recency Agent
-
-- Evaluates the lead's age and last-contact date.
-- Applies the configured recency scoring bands.
-- Produces the recency score and supporting evidence.
-
-### 3.3 Engagement Agent
-
-- Evaluates approved business engagement events.
-- Applies configured event weights.
-- Produces the engagement score and supporting evidence.
-
-### 3.4 Fit & SLA Agent
-
-- Evaluates declared business need.
-- Checks pending follow-up commitments.
-- Identifies overdue follow-up conditions.
-- Produces fit and SLA outputs.
-
-### 3.5 Lead Priority Decision Agent
-
-- Combines the outputs from the preceding agents.
-- Applies deterministic decision precedence.
-- Produces the final action, priority score, reasons, and triggered rules.
-
-## 4. Workflow Context
-
-Each workflow execution uses its own context to carry information between agents.
-
-The context includes:
-
-- Workflow identifier.
-- Original lead record and normalized lead snapshot.
-- Lead Intake validation outcome and validated lead information, when valid.
-- Recency score.
-- Engagement score.
-- Fit score and SLA flags.
-- Individual agent outputs.
-- Final recommendation.
-- Explanation.
-- Audit reference.
-- Errors.
-
-This structure keeps the workflow state organized and makes individual executions easier to inspect.
-
-## 5. Decision and Scoring Layer
-
-The decision layer uses configured scoring weights and deterministic rules.
-
-The provisional scoring model allocates:
-
-| Component | Maximum points |
-|---|---:|
-| Recency | 30 |
-| Engagement | 40 |
-| Declared need / fit | 30 |
-| Total | 100 |
-
-Overdue follow-up commitments take precedence over ordinary score thresholds.
-
-Missing mandatory information results in `REQUEST_DATA`.
-
-The scoring configuration is an MVP implementation assumption and can be refined using approved business requirements and validated operational data.
-
-## 6. Explanation Service
-
-The Explanation Service generates a structured explanation from the workflow context.
-
-It communicates:
-
-- Which agents executed.
-- The final recommendation.
-- The supporting reasons.
-- Relevant evidence.
-- Known limitations.
-
-The explanation is based on deterministic workflow outputs rather than an external language model.
-
-## 7. Audit Service
-
-The Audit Service records information about workflow executions, including:
-
-- Workflow ID.
-- Audit reference.
-- Execution timestamp.
-- Agent execution sequence.
-- Agent outputs.
-- Triggered business rules.
-- Final recommendation.
-- Errors, where applicable.
-
-Audit records are stored in process-local memory in the current MVP. Persistent audit storage is outside the current implementation scope.
-
-## 8. API and Frontend Integration
-
-The FastAPI backend exposes endpoints for health checks, lead prioritization, scenario listing, and scenario execution.
-
-The React and TypeScript frontend communicates with the backend through the Vite development proxy.
-
-The dashboard presents scenario selection, recommendations, priority scores, agent execution information, explanations, and audit details.
-
-## 9. Technology and Design Constraints
-
-- Python and FastAPI for backend services.
-- Pydantic for structured data validation.
-- React and TypeScript for the user interface.
-- Deterministic scoring and decision rules.
-- Seeded sample data for reproducible demonstrations.
-- Pytest for backend testing.
-
-The current MVP intentionally excludes LLM-based decision-making, LangGraph, RAG, vector databases, live CRM integration, and automatic customer communication.
-
-## 10. Architecture Objective
-
-The architecture demonstrates how specialized agents can collaborate through a shared workflow context to produce explainable, auditable, and deterministic sales operations recommendations.
-</file>
-
 <file path="README.md">
 # APEX — Lead Follow-up Prioritization Intelligence
 
@@ -3320,7 +3123,7 @@ The architecture demonstrates how specialized agents can collaborate through a s
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Phase:** 1 — Deterministic Agentic MVP
+**Current Phase:** 1.2 — Explain & Visualize Your Agent Workflow
 
 ## 1. Overview
 
@@ -3521,7 +3324,204 @@ Current validation results:
 
 ## 13. Project Objective
 
-Demonstrate a transparent, explainable, testable multi-agent workflow for sales lead follow-up prioritization within the AA007 Phase 1 MVP scope.
+Demonstrate a transparent, explainable, testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including run-scoped shared workflow context, structured agent outputs, deterministic decision evidence, explanations, and auditability within the AA007 Phase 1.2 scope.
+</file>
+
+<file path="docs/architecture.md">
+# Lead Follow-up Prioritization Intelligence
+
+**Product:** APEX — Lead Intelligence Platform
+**Case ID:** AA007
+**Architecture Version:** 1.0
+
+## 1. Architecture Overview
+
+APEX follows a deterministic multi-agent workflow architecture.
+
+A lead record enters through the API, and the Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the Recency, Engagement, and Fit & SLA Agents evaluate their respective business evidence.
+
+The Lead Priority Decision Agent combines the outputs and applies deterministic business rules to generate a recommendation.
+
+The workflow then produces a structured explanation and an audit record. The frontend exposes the business input, run-scoped shared workflow context, agent execution order and outputs, decision evidence, final recommendation, explanation, and audit reference so reviewers can inspect how each recommendation is produced.
+
+## 2. High-Level Workflow
+
+```text
+User / Frontend
+       |
+       v
+FastAPI Endpoint
+       |
+       v
+Context Builder
+       |
+       v
+Run-Scoped Shared Workflow Context
+       |
+       v
+Lead Intake Agent
+       |
+       +--------------------+
+       |                    |
+       v                    v
+   Valid Input          Invalid Input
+       |                    |
+       v                    v
+ Recency Agent          REQUEST_DATA
+       |                    |
+       v                    |
+ Engagement Agent           |
+       |                    |
+       v                    |
+ Fit & SLA Agent             |
+       |                    |
+       v                    |
+ Lead Priority Decision     |
+       |                    |
+       +--------------------+
+                 |
+                 v
+          Final Recommendation
+                 |
+          +------+------+
+          |             |
+          v             v
+     Explanation      Audit
+       Service       Service
+          |             |
+          +------+------+
+                 |
+                 v
+            API Response
+                 |
+                 v
+              Frontend
+```
+
+## 3. Agent Responsibilities
+
+### 3.1 Lead Intake Agent
+
+- Validates mandatory lead information.
+- Normalizes lead fields.
+- Identifies missing or invalid information.
+- Produces validated lead data.
+
+### 3.2 Recency Agent
+
+- Evaluates the lead's age and last-contact date.
+- Applies the configured recency scoring bands.
+- Produces the recency score and supporting evidence.
+
+### 3.3 Engagement Agent
+
+- Evaluates approved business engagement events.
+- Applies configured event weights.
+- Produces the engagement score and supporting evidence.
+
+### 3.4 Fit & SLA Agent
+
+- Evaluates declared business need.
+- Checks pending follow-up commitments.
+- Identifies overdue follow-up conditions.
+- Produces fit and SLA outputs.
+
+### 3.5 Lead Priority Decision Agent
+
+- Combines the outputs from the preceding agents.
+- Applies deterministic decision precedence.
+- Produces the final action, priority score, reasons, and triggered rules.
+
+## 4. Workflow Context
+
+Each workflow execution uses its own context to carry information between agents.
+
+The context includes:
+
+- Workflow identifier.
+- Original lead record and normalized lead snapshot.
+- Lead Intake validation outcome and validated lead information, when valid.
+- Recency score.
+- Engagement score.
+- Fit score and SLA flags.
+- Individual agent outputs.
+- Final recommendation.
+- Explanation.
+- Audit reference.
+- Errors.
+
+This structure keeps the workflow state organized and makes individual executions easier to inspect.
+
+## 5. Decision and Scoring Layer
+
+The decision layer uses configured scoring weights and deterministic rules.
+
+The provisional scoring model allocates:
+
+| Component | Maximum points |
+|---|---:|
+| Recency | 30 |
+| Engagement | 40 |
+| Declared need / fit | 30 |
+| Total | 100 |
+
+Overdue follow-up commitments take precedence over ordinary score thresholds.
+
+Missing mandatory information results in `REQUEST_DATA`.
+
+The scoring configuration is an MVP implementation assumption and can be refined using approved business requirements and validated operational data.
+
+## 6. Explanation Service
+
+The Explanation Service generates a structured explanation from the workflow context.
+
+It communicates:
+
+- Which agents executed.
+- The final recommendation.
+- The supporting reasons.
+- Relevant evidence.
+- Known limitations.
+
+The explanation is based on deterministic workflow outputs rather than an external language model.
+
+## 7. Audit Service
+
+The Audit Service records information about workflow executions, including:
+
+- Workflow ID.
+- Audit reference.
+- Execution timestamp.
+- Agent execution sequence.
+- Agent outputs.
+- Triggered business rules.
+- Final recommendation.
+- Errors, where applicable.
+
+Audit records are stored in process-local memory in the current MVP. Persistent audit storage is outside the current implementation scope.
+
+## 8. API and Frontend Integration
+
+The FastAPI backend exposes endpoints for health checks, lead prioritization, scenario listing, and scenario execution.
+
+The React and TypeScript frontend communicates with the backend through the Vite development proxy.
+
+The dashboard presents scenario selection, recommendations, priority scores, agent execution information, explanations, and audit details.
+
+## 9. Technology and Design Constraints
+
+- Python and FastAPI for backend services.
+- Pydantic for structured data validation.
+- React and TypeScript for the user interface.
+- Deterministic scoring and decision rules.
+- Seeded sample data for reproducible demonstrations.
+- Pytest for backend testing.
+
+The current MVP intentionally excludes LLM-based decision-making, LangGraph, RAG, vector databases, live CRM integration, and automatic customer communication.
+
+## 10. Architecture Objective
+
+The architecture demonstrates how specialized agents can collaborate through a shared workflow context to produce explainable, auditable, and deterministic sales operations recommendations.
 </file>
 
 </files>

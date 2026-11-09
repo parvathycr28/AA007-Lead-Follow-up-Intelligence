@@ -5,7 +5,7 @@
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Phase:** 1 — Deterministic Agentic MVP
+**Current Phase:** 1.2 — Explain & Visualize Your Agent Workflow
 
 ## 1. Overview
 
@@ -206,4 +206,4 @@ Current validation results:
 
 ## 13. Project Objective
 
-Demonstrate a transparent, explainable, testable multi-agent workflow for sales lead follow-up prioritization within the AA007 Phase 1 MVP scope.
+Demonstrate a transparent, explainable, testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including run-scoped shared workflow context, structured agent outputs, deterministic decision evidence, explanations, and auditability within the AA007 Phase 1.2 scope.
