@@ -1,7 +1,7 @@
-# APEX — System Architecture
+# Lead Follow-up Prioritization Intelligence
 
-**Case ID:** AA007
 **Product:** APEX — Lead Intelligence Platform
+**Case ID:** AA007
 **Architecture Version:** 1.0
 
 ## 1. Architecture Overview
@@ -23,41 +23,49 @@ User / Frontend
 FastAPI Endpoint
        |
        v
-Lead Intake Agent
-       |
-       v
 Context Builder
        |
        v
-Run-Scoped Workflow Context
+Run-Scoped Shared Workflow Context
        |
-       +---------------------------+
-       |             |             |
-       v             v             v
-   Recency      Engagement      Fit & SLA
-    Agent          Agent          Agent
-       |             |             |
-       +-------------+-------------+
-                     |
-                     v
-          Lead Priority Decision Agent
-                     |
-                     v
-           Final Recommendation
-                     |
-              +------+------+
-              |             |
-              v             v
-        Explanation       Audit
-          Service        Service
-              |             |
-              +------+------+
-                     |
-                     v
-              API Response
-                     |
-                     v
-                 Frontend
+       v
+Lead Intake Agent
+       |
+       +--------------------+
+       |                    |
+       v                    v
+   Valid Input          Invalid Input
+       |                    |
+       v                    v
+ Recency Agent          REQUEST_DATA
+       |                    |
+       v                    |
+ Engagement Agent           |
+       |                    |
+       v                    |
+ Fit & SLA Agent             |
+       |                    |
+       v                    |
+ Lead Priority Decision     |
+       |                    |
+       +--------------------+
+                 |
+                 v
+          Final Recommendation
+                 |
+          +------+------+
+          |             |
+          v             v
+     Explanation      Audit
+       Service       Service
+          |             |
+          +------+------+
+                 |
+                 v
+            API Response
+                 |
+                 v
+              Frontend
 ```
 
 ## 3. Agent Responsibilities
@@ -101,7 +109,8 @@ Each workflow execution uses its own context to carry information between agents
 The context includes:
 
 - Workflow identifier.
-- Original and validated lead information.
+- Original lead record and normalized lead snapshot.
+- Lead Intake validation outcome and validated lead information, when valid.
 - Recency score.
 - Engagement score.
 - Fit score and SLA flags.

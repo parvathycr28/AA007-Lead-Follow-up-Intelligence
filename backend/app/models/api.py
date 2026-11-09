@@ -22,6 +22,12 @@ class PrioritizationResponse(BaseModel):
 
     audit_reference: Optional[str] = None
 
+    workflow_context: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    audit_record: Optional[Dict[str, Any]] = None
+
     errors: List[str] = Field(
         default_factory=list
     )
