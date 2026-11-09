@@ -178,7 +178,44 @@ The React and TypeScript frontend communicates with the backend through the Vite
 
 The dashboard presents scenario selection, recommendations, priority scores, agent execution information, explanations, and audit details.
 
-## 9. Technology and Design Constraints
+## 9. Docker Deployment Architecture
+
+The application is containerized using Docker Compose while preserving the existing backend and frontend responsibilities.
+
+### Backend Container
+
+- Built from `backend/Dockerfile`.
+- Uses Python 3.11 with FastAPI and Uvicorn.
+- Listens on port `8002` inside the container.
+- Exposes the existing backend health endpoint at `/api/assistant/health`.
+
+### Frontend Container
+
+- Built from `frontend/Dockerfile` using a multi-stage build.
+- Uses Node.js to generate the React production build.
+- Uses Nginx to serve the static frontend files.
+- Publishes container port `80` on host port `8080`.
+
+### Container Communication
+
+- Docker Compose creates an internal network for the services.
+- Nginx forwards `/api/` requests to `http://backend:8002`.
+- The backend port is available to the frontend through the internal Docker network.
+- The frontend waits for the backend health check before starting.
+
+### Health Checks
+
+- Backend health is checked through `/api/assistant/health`.
+- Frontend health is checked through `/health`.
+- Docker Compose reports container health status.
+
+### Runtime and Persistence Limitation
+
+The audit service continues to use process-local in-memory storage. Audit records are not persisted across backend container restarts. No database or persistent audit volume is introduced in this phase.
+
+Dockerization changes the local deployment and serving arrangement; it does not change the deterministic business workflow or agent responsibilities.
+
+## 10. Technology and Design Constraints
 
 - Python and FastAPI for backend services.
 - Pydantic for structured data validation.
@@ -189,6 +226,6 @@ The dashboard presents scenario selection, recommendations, priority scores, age
 
 The current MVP intentionally excludes LLM-based decision-making, LangGraph, RAG, vector databases, live CRM integration, and automatic customer communication.
 
-## 10. Architecture Objective
+## 11. Architecture Objective
 
 The architecture demonstrates how specialized agents can collaborate through a shared workflow context to produce explainable, auditable, and deterministic sales operations recommendations.

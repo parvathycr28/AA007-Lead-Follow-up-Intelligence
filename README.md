@@ -5,7 +5,7 @@
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 1.2 — Explain & Visualize Your Agent Workflow
+**Current Phase:** 1.3 — Dockerize & Validate the Application Locally
 
 ## 1. Overview
 
@@ -91,6 +91,11 @@ These are illustrative sample records, not live customer data.
 - Vite
 - CSS
 
+**Containerization**
+- Docker
+- Docker Compose
+- Nginx (frontend static hosting and API reverse proxy)
+
 ## 8. Project Structure
 
 ```text
@@ -104,13 +109,19 @@ AA007-Lead-Follow-up-Intelligence/
 │   │   ├── rules/
 │   │   └── services/
 │   ├── tests/
+│   ├── .dockerignore
+│   ├── Dockerfile
 │   └── requirements.txt
 ├── frontend/
 │   ├── public/
 │   ├── src/
+│   ├── .dockerignore
+│   ├── Dockerfile
+│   ├── nginx.conf
 │   ├── package.json
 │   └── vite.config.ts
 ├── docs/
+├── docker-compose.yml
 ├── .gitignore
 └── README.md
 ```
@@ -153,6 +164,43 @@ Open the application:
 
 The Vite development server proxies `/api` requests to the backend on port 8002.
 
+
+### Dockerized Local Run (Phase 1.3)
+
+The application can also run locally as two Docker containers using Docker Compose.
+
+**Container architecture:**
+- **Backend:** Python 3.11, FastAPI and Uvicorn, listening on port `8002` inside the container.
+- **Frontend:** React production build served by Nginx.
+- **API communication:** Nginx forwards frontend `/api/` requests to the backend service at `http://backend:8002`.
+- **Frontend access:** `http://localhost:8080`.
+- **Health checks:** Docker Compose checks backend and frontend health. The frontend starts after the backend becomes healthy.
+
+Run these commands from the repository root:
+
+```bash
+docker compose config
+docker compose build
+docker compose up -d
+docker compose ps
+```
+
+Open the containerized application:
+
+`http://localhost:8080`
+
+To rebuild and restart after code changes:
+
+```bash
+docker compose up -d --build
+```
+
+To stop the AA007 containers:
+
+```bash
+docker compose down
+```
+
 ## 10. API Endpoints
 
 | Method | Endpoint | Purpose |
@@ -193,6 +241,43 @@ Current validation results:
 - Hot, warm, and stale scenarios: manually tested successfully through the frontend.
 - Responsive layouts: verified at desktop, tablet, and mobile sizes.
 
+### Docker Validation (Phase 1.3)
+
+The application was built and validated using Docker Compose.
+
+**Container status:**
+- `aa007-backend` — running and healthy.
+- `aa007-frontend` — running and healthy.
+- Frontend published on host port `8080`.
+
+**Health and API checks:**
+
+| Check | Result |
+|---|---|
+| Frontend health (`/health`) | Passed |
+| Backend health (`/api/assistant/health`) through Nginx | Passed |
+| Scenario listing API | Passed |
+| Frontend-to-backend communication | Passed |
+
+**End-to-end scenario results:**
+
+| Scenario | Expected recommendation | Score | Result |
+|---|---|---:|---|
+| HOT | FOLLOW_UP_NOW | 95 | Passed |
+| WARM | FOLLOW_UP_SOON | 65 | Passed |
+| STALE | NURTURE | 0 | Passed |
+| Missing contact | REQUEST_DATA | 0 | Passed |
+
+The scenario responses included workflow context, agent execution outputs, explanations, and audit records. The seeded scenarios executed all five agents. The missing-contact scenario correctly stopped after Lead Intake Agent and skipped the remaining four agents.
+
+Backend automated tests were also run locally:
+
+`python -m pytest -q`
+
+**Result:** 9 passed, 1 non-blocking deprecation warning.
+
+**Audit limitation:** Audit records are stored in process memory and are not persistent across backend container restarts.
+
 ## 12. Scope and Limitations
 
 - Uses seeded sample data rather than a live CRM integration.
@@ -206,4 +291,4 @@ Current validation results:
 
 ## 13. Project Objective
 
-Demonstrate a transparent, explainable, testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including run-scoped shared workflow context, structured agent outputs, deterministic decision evidence, explanations, and auditability within the AA007 Phase 1.2 scope.
+The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including shared workflow context, structured agent outputs, deterministic decision evidence, explanations, auditability, and local Docker-based validation within the AA007 Phase 1.3 scope.
