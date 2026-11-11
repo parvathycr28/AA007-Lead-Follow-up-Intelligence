@@ -2,8 +2,8 @@
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: aa007-backend
     expose:
       - "8002"
@@ -20,9 +20,11 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
     container_name: aa007-frontend
+    environment:
+      BACKEND_URL: http://backend:8002
     ports:
       - "8080:80"
     depends_on:

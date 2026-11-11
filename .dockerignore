@@ -1,0 +1,42 @@
+
+# Git
+.git/
+.gitignore
+
+# Python environments and cache
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+
+# Node dependencies and build output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+
+# Environment files and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Test and temporary files
+**/selenium_artifacts/
+**/.pytest_cache/
+*.log
+*.tmp
+
+# Editor and operating system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Repomix output
+repomix-output.xml
