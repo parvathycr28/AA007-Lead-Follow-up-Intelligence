@@ -174,7 +174,9 @@ Audit records are stored in process-local memory in the current MVP. Persistent 
 
 The FastAPI backend exposes endpoints for health checks, lead prioritization, scenario listing, and scenario execution.
 
-The React and TypeScript frontend communicates with the backend through the Vite development proxy.
+The React and TypeScript frontend communicates with the backend through the Vite development proxy during local development.
+
+In the production deployment, the frontend uses Nginx to forward requests under `/api/` to the configured backend service. The browser communicates with the frontend origin, while Nginx handles backend routing.
 
 The dashboard presents scenario selection, recommendations, priority scores, agent execution information, explanations, and audit details.
 
@@ -215,7 +217,55 @@ The audit service continues to use process-local in-memory storage. Audit record
 
 Dockerization changes the local deployment and serving arrangement; it does not change the deterministic business workflow or agent responsibilities.
 
-## 10. Technology and Design Constraints
+## 10. Cloud Deployment Architecture — Render (Phase 1.4)
+
+The application is deployed on Render using two independent Docker-based Web Services. This deployment preserves the existing multi-agent workflow and separates frontend presentation from backend execution.
+
+### Frontend Web Service
+
+- **Service:** `aa007-frontend`
+- **Public URL:** https://aa007-frontend.onrender.com
+- Built using `frontend/Dockerfile`.
+- Serves the React production build through Nginx on container port `80`.
+- Uses the `BACKEND_URL` environment variable to identify the backend service.
+
+### Backend Web Service
+
+- **Service:** `aa007-backend`
+- **Public URL:** https://aa007-backend.onrender.com
+- **Health endpoint:** `/api/assistant/health`
+- Built using `backend/Dockerfile`.
+- Runs FastAPI through Uvicorn on container port `8002`.
+
+### Cloud Request Flow
+
+1. The user opens the public frontend URL.
+2. Nginx serves the React application.
+3. The frontend makes same-origin requests under `/api/`.
+4. Nginx forwards those requests to the backend URL configured through `BACKEND_URL`.
+5. FastAPI executes the existing deterministic workflow and returns the response.
+6. The frontend displays agent outputs, shared workflow context, recommendation, explanation, and audit reference.
+
+### Environment Configuration
+
+The frontend Render service requires:
+
+| Variable | Configuration |
+|---|---|
+| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
+
+No application secrets are required for the current deployment.
+
+### Cloud Deployment Constraints
+
+- Both services use the Render Free instance type.
+- Free services may spin down after inactivity, causing a delay on the first request.
+- Audit records remain in process-local memory and may be lost when the backend restarts or is replaced.
+- No persistent database or external audit storage is configured.
+
+The cloud deployment changes the hosting and request-routing arrangement only. It does not change the agents, scoring model, business rules, or deterministic decision workflow.
+
+## 11. Technology and Design Constraints
 
 - Python and FastAPI for backend services.
 - Pydantic for structured data validation.
@@ -226,6 +276,6 @@ Dockerization changes the local deployment and serving arrangement; it does not 
 
 The current MVP intentionally excludes LLM-based decision-making, LangGraph, RAG, vector databases, live CRM integration, and automatic customer communication.
 
-## 11. Architecture Objective
+## 12. Architecture Objective
 
 The architecture demonstrates how specialized agents can collaborate through a shared workflow context to produce explainable, auditable, and deterministic sales operations recommendations.

@@ -5,7 +5,7 @@
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 1.3 — Dockerize & Validate the Application Locally
+**Current Phase:** 1.4 — Cloud Deployment & Phase 1 Completion
 
 ## 1. Overview
 
@@ -201,6 +201,57 @@ To stop the AA007 containers:
 docker compose down
 ```
 
+### Render Cloud Deployment (Phase 1.4)
+
+The APEX application is deployed on Render using two separate Docker-based Web Services.
+
+**Public application URLs:**
+
+- **Frontend:** https://aa007-frontend.onrender.com
+- **Backend:** https://aa007-backend.onrender.com
+- **Backend health:** https://aa007-backend.onrender.com/api/assistant/health
+
+**Deployment architecture:**
+
+- **Frontend service:** React production build served through Nginx.
+- **Backend service:** FastAPI application served by Uvicorn on port `8002`.
+- **Cloud platform:** Render Docker Web Services.
+- **Region:** Singapore.
+- **Instance type:** Free tier for both services.
+- **Source repository:** GitHub `main` branch.
+
+**Frontend environment configuration:**
+
+The frontend Render service uses the following environment variable:
+
+| Variable | Value |
+|---|---|
+| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
+
+Nginx uses this variable to forward browser requests under `/api/` to the backend service. This preserves the frontend's same-origin API request pattern without requiring a separate browser-to-backend CORS configuration.
+
+**Deployment validation:**
+
+| Check | Result |
+|---|---|
+| Public frontend URL | Passed |
+| Frontend static assets | Passed |
+| Direct backend health endpoint | Passed |
+| Backend health through frontend proxy | Passed |
+| Scenario listing and frontend loading | Passed |
+| Render deployment status | Live |
+
+The public backend health endpoint returned:
+
+`{"status":"healthy","application":"AA007 Lead Follow-up Prioritization Intelligence","version":"1.0.0"}`
+
+**Operational limitations:**
+
+- Render free services may spin down after inactivity, resulting in a delay during the first request.
+- Audit records remain in process-local memory. They are not durable and may be lost when the backend restarts.
+- No persistent database or external audit storage has been configured.
+- No application secrets are required for the current deployment.
+
 ## 10. API Endpoints
 
 | Method | Endpoint | Purpose |
@@ -284,11 +335,11 @@ Backend automated tests were also run locally:
 - Uses deterministic business rules; no LLM-based decisions.
 - Does not use LangGraph, RAG, vector databases, or external agent orchestration.
 - Does not automatically send messages or contact leads.
-- Audit records are held in process-local memory and are not persistent across backend restarts.
+- Audit records are held in process-local memory and are not durable across backend restarts or service replacement.
 - Scoring weights and thresholds are provisional MVP assumptions.
 - Recommendations support operational prioritization and are not guaranteed sales outcomes.
 - Sensitive personal profiling is excluded.
 
 ## 13. Project Objective
 
-The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including shared workflow context, structured agent outputs, deterministic decision evidence, explanations, auditability, and local Docker-based validation within the AA007 Phase 1.3 scope.
+The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including shared workflow context, structured agent outputs, deterministic decision evidence, explanations, auditability, local Docker-based validation, and cloud deployment on Render within the AA007 Phase 1 scope.
