@@ -38,3 +38,6 @@ class WorkflowContext(BaseModel):
     audit_reference: Optional[str] = None
 
     errors: List[str] = Field(default_factory=list)
+    execution_trace: List[Dict[str, str]] = Field(
+        default_factory=list
+    )

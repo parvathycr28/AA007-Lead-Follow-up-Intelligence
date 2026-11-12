@@ -3,3 +3,4 @@ uvicorn[standard]
 pydantic
 pytest
 httpx
+langgraph==1.2.20

@@ -40,7 +40,21 @@ def test_seed_scenario_workflow(
     assert context.audit_reference is not None
     assert AuditService.get(context.audit_reference) is not None
     assert context.errors == []
+    expected_nodes = [
+        "build_context",
+        "lead_intake",
+        "recency",
+        "engagement",
+        "fit_sla",
+        "priority_decision",
+        "explanation_audit",
+    ]
 
+    assert [item["node"] for item in context.execution_trace] == expected_nodes
+    assert all(
+        item["status"] == "completed"
+        for item in context.execution_trace
+    )
 
 def test_scenario_listing_api():
     response = client.get("/api/leads/scenarios")
@@ -98,3 +112,20 @@ def test_missing_contact_returns_request_data():
     assert context.explanation is not None
     assert context.audit_reference is not None
     assert context.errors
+    expected_trace = [
+        ("build_context", "completed"),
+        ("lead_intake", "completed"),
+        ("recency", "skipped"),
+        ("engagement", "skipped"),
+        ("fit_sla", "skipped"),
+        ("priority_decision", "skipped"),
+        ("explanation_audit", "completed"),
+    ]
+
+    actual_trace = [
+        (item["node"], item["status"])
+        for item in context.execution_trace
+    ]
+
+    assert actual_trace == expected_trace
+    assert list(context.agent_outputs.keys()) == ["lead_intake"]
