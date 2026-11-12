@@ -99,7 +99,7 @@ These are illustrative sample records, not live customer data.
 ## 8. Project Structure
 
 ```text
-AA007-Lead-Follow-up-Intelligence/
+AA007-Lead-Follow-up-Prioritization-Intelligence/
 ├── backend/
 │   ├── app/
 │   │   ├── agents/
