@@ -5,13 +5,15 @@
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 1.4 — Cloud Deployment & Phase 1 Completion
+**Current Phase:** 2.1 — LangGraph Linear Orchestration
 
 ## 1. Overview
 
-APEX is a deterministic, multi-agent MVP that helps sales teams prioritize lead follow-up activities using structured business evidence.
+APEX is a deterministic, multi-agent application that helps sales teams prioritize lead follow-up activities using structured business evidence.
 
-The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces a transparent recommendation, supporting reasons, evidence, and an audit reference.
+The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
+
+The existing five specialized agents are orchestrated through a LangGraph linear StateGraph workflow. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -46,7 +48,25 @@ The workflow consists of five specialized agents:
 4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
 5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
 
-A run-scoped workflow context carries the lead data, agent outputs, recommendation, explanation, and audit information.
+### LangGraph Orchestration — Phase 2.1
+
+The agents are orchestrated through a LangGraph `StateGraph` using a fixed linear sequence of seven workflow nodes:
+
+1. `build_context`
+2. `lead_intake`
+3. `recency`
+4. `engagement`
+5. `fit_sla`
+6. `priority_decision`
+7. `explanation_audit`
+
+A run-scoped shared workflow context carries lead data, agent outputs, recommendations, explanations, and audit information between nodes.
+
+Each node records its name and execution status in the workflow execution trace.
+
+For valid leads, all seven nodes execute in sequence. For invalid leads, the four downstream analytical agent nodes are skipped, while explanation and audit generation still take place.
+
+LangGraph manages orchestration and shared state. It does not replace the existing deterministic business rules or make independent business decisions.
 
 ## 5. Deterministic Decision Logic
 
@@ -83,6 +103,7 @@ These are illustrative sample records, not live customer data.
 - Python 3.11
 - FastAPI
 - Pydantic
+- LangGraph (`StateGraph` linear orchestration)
 - Pytest
 
 **Frontend**
@@ -91,10 +112,11 @@ These are illustrative sample records, not live customer data.
 - Vite
 - CSS
 
-**Containerization**
+**Containerization and Deployment**
 - Docker
 - Docker Compose
 - Nginx (frontend static hosting and API reverse proxy)
+- Render (cloud deployment)
 
 ## 8. Project Structure
 
@@ -108,6 +130,9 @@ AA007-Lead-Follow-up-Prioritization-Intelligence/
 │   │   ├── models/
 │   │   ├── rules/
 │   │   └── services/
+│   │       ├── workflow_service.py
+│   │       ├── workflow_graph.py
+│   │       └── workflow_state.py
 │   ├── tests/
 │   ├── .dockerignore
 │   ├── Dockerfile
@@ -121,10 +146,17 @@ AA007-Lead-Follow-up-Prioritization-Intelligence/
 │   ├── package.json
 │   └── vite.config.ts
 ├── docs/
+│   └── architecture.md
 ├── docker-compose.yml
 ├── .gitignore
 └── README.md
 ```
+
+The backend workflow modules are:
+
+- `workflow_service.py` — invokes the compiled LangGraph workflow.
+- `workflow_graph.py` — defines the seven-node linear StateGraph.
+- `workflow_state.py` — defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
 
@@ -331,10 +363,27 @@ Backend automated tests were also run locally:
 
 ## 12. Scope and Limitations
 
+### Current Phase 2.1 Capabilities
+
 - Uses seeded sample data rather than a live CRM integration.
-- Uses deterministic business rules; no LLM-based decisions.
-- Does not use LangGraph, RAG, vector databases, or external agent orchestration.
+- Uses deterministic business rules for lead prioritization.
+- Uses LangGraph for fixed linear workflow orchestration.
+- Records workflow node execution order and status through execution tracing.
+- Preserves the existing five specialized agents and their business logic.
 - Does not automatically send messages or contact leads.
+
+### Out of Scope
+
+- Conditional workflow routing and dynamic agent selection.
+- LLM-based business decisions.
+- Retrieval-Augmented Generation (RAG).
+- Vector databases.
+- Model Context Protocol (MCP).
+- Live CRM integration.
+- Automatic customer communication.
+
+### Operational Limitations
+
 - Audit records are held in process-local memory and are not durable across backend restarts or service replacement.
 - Scoring weights and thresholds are provisional MVP assumptions.
 - Recommendations support operational prioritization and are not guaranteed sales outcomes.
@@ -342,4 +391,10 @@ Backend automated tests were also run locally:
 
 ## 13. Project Objective
 
-The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including shared workflow context, structured agent outputs, deterministic decision evidence, explanations, auditability, local Docker-based validation, and cloud deployment on Render within the AA007 Phase 1 scope.
+The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence.
+
+The application combines five specialized deterministic agents, shared workflow context, LangGraph linear orchestration, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
+
+Phase 2.1 evolves the existing workflow orchestration without changing established business rules, recommendations, or frontend and API integration.
+
+The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.

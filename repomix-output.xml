@@ -70,7 +70,9 @@ backend/
       audit_service.py
       context_builder.py
       explanation_service.py
+      workflow_graph.py
       workflow_service.py
+      workflow_state.py
     __init__.py
     main.py
   tests/
@@ -116,6 +118,206 @@ README.md
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="backend/app/services/workflow_graph.py">
+from langgraph.graph import END, START, StateGraph
+
+from app.models.workflow import WorkflowContext
+from app.services.workflow_state import WorkflowState
+
+from app.services.context_builder import ContextBuilder
+from app.services.explanation_service import ExplanationService
+from app.services.audit_service import AuditService
+
+from app.agents.lead_intake_agent import LeadIntakeAgent
+from app.agents.recency_agent import RecencyAgent
+from app.agents.engagement_agent import EngagementAgent
+from app.agents.fit_sla_agent import FitSLAAgent
+from app.agents.lead_priority_agent import LeadPriorityAgent
+
+
+def add_trace(
+    context: WorkflowContext,
+    node: str,
+    status: str,
+) -> None:
+    context.execution_trace.append({
+        "node": node,
+        "status": status,
+    })
+
+
+def build_context_node(state: WorkflowState) -> dict:
+    context = ContextBuilder.build(
+        state["lead_record"],
+        state.get("engagement_events", []),
+    )
+
+    add_trace(context, "build_context", "completed")
+
+    return {"context": context}
+
+
+def lead_intake_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
+    try:
+        intake_result = LeadIntakeAgent.run(context)
+
+        if intake_result.status == "invalid":
+            context.final_recommendation = {
+                "action": "REQUEST_DATA",
+                "priority_score": 0,
+                "triggered_rules": [
+                    "MISSING_MANDATORY_DATA"
+                ],
+                "reasons": intake_result.errors,
+            }
+
+            add_trace(context, "lead_intake", "completed")
+
+            return {
+                "context": context,
+                "intake_valid": False,
+                "execution_failed": False,
+            }
+
+        add_trace(context, "lead_intake", "completed")
+
+        return {
+            "context": context,
+            "intake_valid": True,
+            "execution_failed": False,
+        }
+
+    except Exception as exc:
+        context.errors.append(str(exc))
+        add_trace(context, "lead_intake", "failed")
+
+        return {
+            "context": context,
+            "intake_valid": False,
+            "execution_failed": True,
+        }
+
+
+def run_agent_node(
+    state: WorkflowState,
+    node_name: str,
+    agent,
+) -> dict:
+    context = state["context"]
+
+    if not state.get("intake_valid", False):
+        add_trace(context, node_name, "skipped")
+        return {"context": context}
+
+    if state.get("execution_failed", False):
+        add_trace(context, node_name, "skipped")
+        return {"context": context}
+
+    try:
+        agent.run(context)
+        add_trace(context, node_name, "completed")
+
+        return {"context": context}
+
+    except Exception as exc:
+        context.errors.append(str(exc))
+        add_trace(context, node_name, "failed")
+
+        return {
+            "context": context,
+            "execution_failed": True,
+        }
+
+
+def recency_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "recency",
+        RecencyAgent,
+    )
+
+
+def engagement_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "engagement",
+        EngagementAgent,
+    )
+
+
+def fit_sla_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "fit_sla",
+        FitSLAAgent,
+    )
+
+
+def priority_decision_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "priority_decision",
+        LeadPriorityAgent,
+    )
+
+
+def explanation_audit_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
+    ExplanationService.build(context)
+    AuditService.record(context)
+
+    add_trace(context, "explanation_audit", "completed")
+
+    return {"context": context}
+
+
+def build_workflow_graph():
+    graph = StateGraph(WorkflowState)
+
+    graph.add_node("build_context", build_context_node)
+    graph.add_node("lead_intake", lead_intake_node)
+    graph.add_node("recency", recency_node)
+    graph.add_node("engagement", engagement_node)
+    graph.add_node("fit_sla", fit_sla_node)
+    graph.add_node("priority_decision", priority_decision_node)
+    graph.add_node("explanation_audit", explanation_audit_node)
+
+    graph.add_edge(START, "build_context")
+    graph.add_edge("build_context", "lead_intake")
+    graph.add_edge("lead_intake", "recency")
+    graph.add_edge("recency", "engagement")
+    graph.add_edge("engagement", "fit_sla")
+    graph.add_edge("fit_sla", "priority_decision")
+    graph.add_edge("priority_decision", "explanation_audit")
+    graph.add_edge("explanation_audit", END)
+
+    return graph.compile()
+</file>
+
+<file path="backend/app/services/workflow_state.py">
+from typing import List, TypedDict
+
+from app.models.lead import EngagementEvent, LeadRecord
+from app.models.workflow import WorkflowContext
+
+
+class WorkflowState(TypedDict, total=False):
+    """
+    Shared state passed between LangGraph workflow nodes.
+    """
+
+    lead_record: LeadRecord
+    engagement_events: List[EngagementEvent]
+
+    context: WorkflowContext
+
+    intake_valid: bool
+    execution_failed: bool
+</file>
 
 <file path="backend/app/agents/__init__.py">
 
@@ -642,6 +844,9 @@ class WorkflowContext(BaseModel):
     audit_reference: Optional[str] = None
 
     errors: List[str] = Field(default_factory=list)
+    execution_trace: List[Dict[str, str]] = Field(
+        default_factory=list
+    )
 </file>
 
 <file path="backend/app/rules/__init__.py">
@@ -806,16 +1011,7 @@ from typing import List
 
 from app.models.lead import EngagementEvent, LeadRecord
 from app.models.workflow import WorkflowContext
-
-from app.services.context_builder import ContextBuilder
-from app.services.explanation_service import ExplanationService
-from app.services.audit_service import AuditService
-
-from app.agents.lead_intake_agent import LeadIntakeAgent
-from app.agents.recency_agent import RecencyAgent
-from app.agents.engagement_agent import EngagementAgent
-from app.agents.fit_sla_agent import FitSLAAgent
-from app.agents.lead_priority_agent import LeadPriorityAgent
+from app.services.workflow_graph import build_workflow_graph
 
 
 class WorkflowService:
@@ -826,45 +1022,14 @@ class WorkflowService:
         engagement_events: List[EngagementEvent] | None = None,
     ) -> WorkflowContext:
 
-        # Step 1: Build shared workflow context.
-        context = ContextBuilder.build(
-            lead_record,
-            engagement_events,
-        )
+        workflow = build_workflow_graph()
 
-        try:
-            # Step 2: Validate lead input.
-            intake_result = LeadIntakeAgent.run(context)
+        result = workflow.invoke({
+            "lead_record": lead_record,
+            "engagement_events": engagement_events or [],
+        })
 
-            if intake_result.status == "invalid":
-                context.final_recommendation = {
-                    "action": "REQUEST_DATA",
-                    "priority_score": 0,
-                    "triggered_rules": [
-                        "MISSING_MANDATORY_DATA"
-                    ],
-                    "reasons": intake_result.errors,
-                }
-
-            else:
-                # Step 3: Execute analytical agents.
-                RecencyAgent.run(context)
-                EngagementAgent.run(context)
-                FitSLAAgent.run(context)
-
-                # Step 4: Generate final recommendation.
-                LeadPriorityAgent.run(context)
-
-        except Exception as exc:
-            context.errors.append(str(exc))
-
-        # Step 5: Generate explanation.
-        ExplanationService.build(context)
-
-        # Step 6: Generate audit record.
-        AuditService.record(context)
-
-        return context
+        return result["context"]
 </file>
 
 <file path="backend/app/__init__.py">
@@ -943,7 +1108,21 @@ def test_seed_scenario_workflow(
     assert context.audit_reference is not None
     assert AuditService.get(context.audit_reference) is not None
     assert context.errors == []
+    expected_nodes = [
+        "build_context",
+        "lead_intake",
+        "recency",
+        "engagement",
+        "fit_sla",
+        "priority_decision",
+        "explanation_audit",
+    ]
 
+    assert [item["node"] for item in context.execution_trace] == expected_nodes
+    assert all(
+        item["status"] == "completed"
+        for item in context.execution_trace
+    )
 
 def test_scenario_listing_api():
     response = client.get("/api/leads/scenarios")
@@ -1001,6 +1180,23 @@ def test_missing_contact_returns_request_data():
     assert context.explanation is not None
     assert context.audit_reference is not None
     assert context.errors
+    expected_trace = [
+        ("build_context", "completed"),
+        ("lead_intake", "completed"),
+        ("recency", "skipped"),
+        ("engagement", "skipped"),
+        ("fit_sla", "skipped"),
+        ("priority_decision", "skipped"),
+        ("explanation_audit", "completed"),
+    ]
+
+    actual_trace = [
+        (item["node"], item["status"])
+        for item in context.execution_trace
+    ]
+
+    assert actual_trace == expected_trace
+    assert list(context.agent_outputs.keys()) == ["lead_intake"]
 </file>
 
 <file path="backend/.dockerignore">
@@ -1057,6 +1253,7 @@ uvicorn[standard]
 pydantic
 pytest
 httpx
+langgraph==1.2.20
 </file>
 
 <file path="frontend/public/favicon.svg">
@@ -2853,7 +3050,7 @@ function App() {
               Transparent, evidence-based lead prioritization through a coordinated agent workflow.
             </p>
           </div>
-          <div className="version-tag">AA007 · PHASE 1 COMPLETE</div>
+          <div className="version-tag">AA007 · PHASE 2.1</div>
         </div>
 
         <section className="scenario-panel">
@@ -3318,6 +3515,403 @@ server {
 }
 </file>
 
+<file path="docs/architecture.md">
+# Lead Follow-up Prioritization Intelligence
+
+**Product:** APEX — Lead Intelligence Platform
+**Case ID:** AA007
+**Architecture Version:** 2.1
+
+## 1. Architecture Overview
+
+APEX follows a deterministic multi-agent workflow architecture orchestrated using LangGraph.
+
+A lead record enters through the FastAPI endpoint. The LangGraph StateGraph executes a linear sequence of workflow nodes, beginning with the Context Builder and followed by the Lead Intake Agent, Recency Agent, Engagement Agent, Fit & SLA Agent, Lead Priority Decision Agent, and Explanation & Audit stage.
+
+The Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the analytical agents execute.
+
+For valid leads, all five agents execute in sequence. For invalid leads with missing mandatory information, the analytical agent nodes are skipped while the workflow continues to explanation and audit generation.
+
+LangGraph manages the orchestration and shared workflow state. It does not make business decisions. The existing agents, deterministic scoring rules, recommendation logic, explanations, and audit behaviour remain unchanged.
+
+The workflow also records an execution trace containing the node name and execution status. This makes the orchestration sequence inspectable.
+
+The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references.
+
+## 2. High-Level Workflow
+
+The FastAPI endpoint invokes the LangGraph workflow. The compiled StateGraph executes the following nodes in a fixed linear sequence:
+
+```text
+User / Frontend
+       |
+       v
+FastAPI Endpoint
+       |
+       v
+LangGraph StateGraph
+       |
+       v
+  build_context
+       |
+       v
+   lead_intake
+       |
+       v
+     recency
+       |
+       v
+   engagement
+       |
+       v
+     fit_sla
+       |
+       v
+priority_decision
+       |
+       v
+explanation_audit
+       |
+       v
+      END
+       |
+       v
+  API Response
+       |
+       v
+    Frontend
+```
+
+### Workflow Execution Behaviour
+
+- **Valid lead:** All seven workflow nodes execute in sequence, and all five agents produce their outputs.
+- **Invalid lead:** The Context Builder and Lead Intake nodes execute. The four downstream analytical agent nodes are marked as skipped. The workflow still proceeds to explanation and audit generation.
+- **Execution trace:** Each node records its name and status (`completed`, `skipped`, or `failed`) in the shared workflow context.
+
+The graph uses fixed edges between nodes. Conditional routing and dynamic agent selection are not part of the current Phase 2.1 implementation.
+
+## 3. Agent Responsibilities
+
+### 3.1 Lead Intake Agent
+
+- Validates mandatory lead information.
+- Normalizes lead fields.
+- Identifies missing or invalid information.
+- Produces validated lead data.
+
+### 3.2 Recency Agent
+
+- Evaluates the lead's age and last-contact date.
+- Applies the configured recency scoring bands.
+- Produces the recency score and supporting evidence.
+
+### 3.3 Engagement Agent
+
+- Evaluates approved business engagement events.
+- Applies configured event weights.
+- Produces the engagement score and supporting evidence.
+
+### 3.4 Fit & SLA Agent
+
+- Evaluates declared business need.
+- Checks pending follow-up commitments.
+- Identifies overdue follow-up conditions.
+- Produces fit and SLA outputs.
+
+### 3.5 Lead Priority Decision Agent
+
+- Combines the outputs from the preceding agents.
+- Applies deterministic decision precedence.
+- Produces the final action, priority score, reasons, and triggered rules.
+
+## 4. Workflow Context
+
+Each workflow execution uses its own shared workflow context to carry information between LangGraph nodes and agents.
+
+The context includes:
+
+- Workflow identifier.
+- Original lead record and normalized lead snapshot.
+- Lead Intake validation outcome and validated lead information, when valid.
+- Recency score.
+- Engagement score.
+- Fit score and SLA flags.
+- Individual agent outputs.
+- Final recommendation.
+- Explanation.
+- Audit reference.
+- Errors.
+- Execution trace containing workflow node names and execution statuses.
+
+The LangGraph StateGraph uses a shared workflow state to pass the lead record, engagement events, and workflow context between nodes.
+
+The execution trace records the sequence in which nodes execute. Each entry contains a node name and a status, such as `completed`, `skipped`, or `failed`.
+
+This structure keeps workflow state organized, supports execution inspection, and makes individual workflow runs easier to validate.
+
+## 5. Decision and Scoring Layer
+
+The decision layer uses configured scoring weights and deterministic rules.
+
+The provisional scoring model allocates:
+
+| Component | Maximum points |
+|---|---:|
+| Recency | 30 |
+| Engagement | 40 |
+| Declared need / fit | 30 |
+| Total | 100 |
+
+Overdue follow-up commitments take precedence over ordinary score thresholds.
+
+Missing mandatory information results in `REQUEST_DATA`.
+
+The scoring configuration is an MVP implementation assumption and can be refined using approved business requirements and validated operational data.
+
+## 6. Explanation Service
+
+The Explanation Service generates a structured explanation from the workflow context.
+
+It communicates:
+
+- Which agents executed.
+- The final recommendation.
+- The supporting reasons.
+- Relevant evidence.
+- Known limitations.
+
+The explanation is based on deterministic workflow outputs rather than an external language model.
+
+## 7. Audit Service
+
+The Audit Service records information about workflow executions, including:
+
+- Workflow ID.
+- Audit reference.
+- Execution timestamp.
+- Agent execution sequence.
+- Agent outputs.
+- Triggered business rules.
+- Final recommendation.
+- Errors, where applicable.
+
+Audit records are stored in process-local memory in the current MVP. Persistent audit storage is outside the current implementation scope.
+
+## 8. API and Frontend Integration
+
+The FastAPI backend exposes endpoints for health checks, lead prioritization, scenario listing, and scenario execution.
+
+The React and TypeScript frontend communicates with the backend through the Vite development proxy during local development.
+
+In the production deployment, the frontend uses Nginx to forward requests under `/api/` to the configured backend service. The browser communicates with the frontend origin, while Nginx handles backend routing.
+
+The dashboard presents scenario selection, recommendations, priority scores, agent execution information, explanations, and audit details.
+
+## 9. Docker Deployment Architecture
+
+The application is containerized using Docker Compose while preserving the existing backend and frontend responsibilities.
+
+### Backend Container
+
+- Built from `backend/Dockerfile`.
+- Uses Python 3.11 with FastAPI and Uvicorn.
+- Listens on port `8002` inside the container.
+- Exposes the existing backend health endpoint at `/api/assistant/health`.
+
+### Frontend Container
+
+- Built from `frontend/Dockerfile` using a multi-stage build.
+- Uses Node.js to generate the React production build.
+- Uses Nginx to serve the static frontend files.
+- Publishes container port `80` on host port `8080`.
+
+### Container Communication
+
+- Docker Compose creates an internal network for the services.
+- Nginx forwards `/api/` requests to `http://backend:8002`.
+- The backend port is available to the frontend through the internal Docker network.
+- The frontend waits for the backend health check before starting.
+
+### Health Checks
+
+- Backend health is checked through `/api/assistant/health`.
+- Frontend health is checked through `/health`.
+- Docker Compose reports container health status.
+
+### Runtime and Persistence Limitation
+
+The audit service continues to use process-local in-memory storage. Audit records are not persisted across backend container restarts. No database or persistent audit volume is introduced in this phase.
+
+Dockerization changes the local deployment and serving arrangement; it does not change the deterministic business workflow or agent responsibilities.
+
+## 10. Cloud Deployment Architecture — Render (Phase 1.4)
+
+The application is deployed on Render using two independent Docker-based Web Services. This deployment preserves the existing multi-agent workflow and separates frontend presentation from backend execution.
+
+### Frontend Web Service
+
+- **Service:** `aa007-frontend`
+- **Public URL:** https://aa007-frontend.onrender.com
+- Built using `frontend/Dockerfile`.
+- Serves the React production build through Nginx on container port `80`.
+- Uses the `BACKEND_URL` environment variable to identify the backend service.
+
+### Backend Web Service
+
+- **Service:** `aa007-backend`
+- **Public URL:** https://aa007-backend.onrender.com
+- **Health endpoint:** `/api/assistant/health`
+- Built using `backend/Dockerfile`.
+- Runs FastAPI through Uvicorn on container port `8002`.
+
+### Cloud Request Flow
+
+1. The user opens the public frontend URL.
+2. Nginx serves the React application.
+3. The frontend makes same-origin requests under `/api/`.
+4. Nginx forwards those requests to the backend URL configured through `BACKEND_URL`.
+5. FastAPI executes the existing deterministic workflow and returns the response.
+6. The frontend displays agent outputs, shared workflow context, recommendation, explanation, and audit reference.
+
+### Environment Configuration
+
+The frontend Render service requires:
+
+| Variable | Configuration |
+|---|---|
+| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
+
+No application secrets are required for the current deployment.
+
+### Cloud Deployment Constraints
+
+- Both services use the Render Free instance type.
+- Free services may spin down after inactivity, causing a delay on the first request.
+- Audit records remain in process-local memory and may be lost when the backend restarts or is replaced.
+- No persistent database or external audit storage is configured.
+
+The cloud deployment changes the hosting and request-routing arrangement only. It does not change the agents, scoring model, business rules, or deterministic decision workflow.
+
+## 11. Technology and Design Constraints
+
+- Python 3.11 for backend development.
+- FastAPI for backend API services.
+- Pydantic for structured data validation.
+- LangGraph for deterministic linear workflow orchestration using `StateGraph`.
+- React and TypeScript for the user interface.
+- Deterministic scoring and decision rules.
+- Seeded sample data for reproducible demonstrations.
+- Pytest for backend testing.
+- Docker and Docker Compose for containerized local validation.
+- Render for cloud deployment.
+
+### Current Phase 2.1 Scope
+
+The current implementation uses LangGraph to orchestrate the existing five-agent workflow through a fixed sequence of nodes.
+
+The following capabilities remain outside the current scope:
+
+- Conditional workflow routing.
+- LLM-based decision-making.
+- Retrieval-Augmented Generation (RAG).
+- Vector databases.
+- Model Context Protocol (MCP).
+- Live CRM integration.
+- Automatic customer communication.
+
+LangGraph manages workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
+
+## 12. Architecture Objective
+
+The architecture demonstrates how specialized deterministic agents collaborate through a shared workflow context to produce explainable, auditable, and reproducible sales operations recommendations.
+
+LangGraph provides explicit workflow orchestration through a linear StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
+
+The architecture preserves the established business outcomes while making workflow execution order and node status observable through execution tracing.
+
+## 13. Phase 2.1 — LangGraph Linear Orchestration
+
+### 13.1 Implementation
+
+Phase 2.1 evolves the existing deterministic workflow by introducing LangGraph `StateGraph` orchestration.
+
+The implementation adds two workflow modules:
+
+- `backend/app/services/workflow_state.py` — defines the shared state passed between workflow nodes.
+- `backend/app/services/workflow_graph.py` — defines and compiles the LangGraph workflow.
+
+The `WorkflowService` invokes the compiled graph and returns the resulting workflow context.
+
+The graph contains seven nodes:
+
+| Execution order | LangGraph node | Responsibility |
+|---:|---|---|
+| 1 | `build_context` | Creates the shared workflow context. |
+| 2 | `lead_intake` | Validates mandatory lead information. |
+| 3 | `recency` | Evaluates lead recency. |
+| 4 | `engagement` | Evaluates engagement evidence. |
+| 5 | `fit_sla` | Evaluates fit and follow-up SLA conditions. |
+| 6 | `priority_decision` | Applies deterministic prioritization rules. |
+| 7 | `explanation_audit` | Generates the explanation and records the audit entry. |
+
+The graph starts at `START`, follows fixed sequential edges, and terminates at `END`.
+
+### 13.2 Execution Tracing
+
+Each node appends an execution-trace entry to the workflow context.
+
+Each entry contains:
+
+- `node` — the workflow node name.
+- `status` — the execution status.
+
+Supported statuses include `completed`, `skipped`, and `failed`.
+
+For valid leads, all seven nodes complete successfully.
+
+For invalid leads, the four downstream analytical agent nodes are skipped after lead intake validation. Explanation and audit generation still take place.
+
+### 13.3 Business Outcome Preservation
+
+The LangGraph migration preserves the existing deterministic business rules and recommendations.
+
+| Scenario | Expected recommendation | Priority score |
+|---|---|---:|
+| HOT | `FOLLOW_UP_NOW` | 95 |
+| WARM | `FOLLOW_UP_SOON` | 65 |
+| STALE | `NURTURE` | 0 |
+| Missing mandatory contact information | `REQUEST_DATA` | 0 |
+
+The existing API response structure and frontend integration are preserved. Execution-trace information is exposed through the workflow context.
+
+LangGraph is responsible for orchestration, not business decision-making.
+
+### 13.4 Validation Results
+
+Phase 2.1 validation covered:
+
+- Successful StateGraph compilation.
+- Verification of the seven-node linear execution order.
+- HOT, WARM, and STALE scenario execution.
+- Missing mandatory contact information handling.
+- Execution-trace status verification.
+- Preservation of deterministic recommendations and explanations.
+- API execution through FastAPI.
+- Local Docker Compose build and container health checks.
+- Frontend scenario execution through the local containerized application.
+- Backend automated tests.
+
+The backend test suite completed successfully with **9 passed tests**.
+
+The local Docker Compose application was also validated, with both backend and frontend containers healthy.
+
+### 13.5 Phase Boundary
+
+Phase 2.1 introduces linear LangGraph orchestration without changing the underlying business logic.
+
+Conditional routing, dynamic workflow paths, LLM-based decisions, RAG, vector databases, and MCP remain outside this phase and are reserved for later development.
+</file>
+
 <file path="README.md">
 # APEX — Lead Follow-up Prioritization Intelligence
 
@@ -3326,13 +3920,15 @@ server {
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 1.4 — Cloud Deployment & Phase 1 Completion
+**Current Phase:** 2.1 — LangGraph Linear Orchestration
 
 ## 1. Overview
 
-APEX is a deterministic, multi-agent MVP that helps sales teams prioritize lead follow-up activities using structured business evidence.
+APEX is a deterministic, multi-agent application that helps sales teams prioritize lead follow-up activities using structured business evidence.
 
-The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces a transparent recommendation, supporting reasons, evidence, and an audit reference.
+The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
+
+The existing five specialized agents are orchestrated through a LangGraph linear StateGraph workflow. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -3367,7 +3963,25 @@ The workflow consists of five specialized agents:
 4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
 5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
 
-A run-scoped workflow context carries the lead data, agent outputs, recommendation, explanation, and audit information.
+### LangGraph Orchestration — Phase 2.1
+
+The agents are orchestrated through a LangGraph `StateGraph` using a fixed linear sequence of seven workflow nodes:
+
+1. `build_context`
+2. `lead_intake`
+3. `recency`
+4. `engagement`
+5. `fit_sla`
+6. `priority_decision`
+7. `explanation_audit`
+
+A run-scoped shared workflow context carries lead data, agent outputs, recommendations, explanations, and audit information between nodes.
+
+Each node records its name and execution status in the workflow execution trace.
+
+For valid leads, all seven nodes execute in sequence. For invalid leads, the four downstream analytical agent nodes are skipped, while explanation and audit generation still take place.
+
+LangGraph manages orchestration and shared state. It does not replace the existing deterministic business rules or make independent business decisions.
 
 ## 5. Deterministic Decision Logic
 
@@ -3404,6 +4018,7 @@ These are illustrative sample records, not live customer data.
 - Python 3.11
 - FastAPI
 - Pydantic
+- LangGraph (`StateGraph` linear orchestration)
 - Pytest
 
 **Frontend**
@@ -3412,10 +4027,11 @@ These are illustrative sample records, not live customer data.
 - Vite
 - CSS
 
-**Containerization**
+**Containerization and Deployment**
 - Docker
 - Docker Compose
 - Nginx (frontend static hosting and API reverse proxy)
+- Render (cloud deployment)
 
 ## 8. Project Structure
 
@@ -3429,6 +4045,9 @@ AA007-Lead-Follow-up-Prioritization-Intelligence/
 │   │   ├── models/
 │   │   ├── rules/
 │   │   └── services/
+│   │       ├── workflow_service.py
+│   │       ├── workflow_graph.py
+│   │       └── workflow_state.py
 │   ├── tests/
 │   ├── .dockerignore
 │   ├── Dockerfile
@@ -3442,10 +4061,17 @@ AA007-Lead-Follow-up-Prioritization-Intelligence/
 │   ├── package.json
 │   └── vite.config.ts
 ├── docs/
+│   └── architecture.md
 ├── docker-compose.yml
 ├── .gitignore
 └── README.md
 ```
+
+The backend workflow modules are:
+
+- `workflow_service.py` — invokes the compiled LangGraph workflow.
+- `workflow_graph.py` — defines the seven-node linear StateGraph.
+- `workflow_state.py` — defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
 
@@ -3652,10 +4278,27 @@ Backend automated tests were also run locally:
 
 ## 12. Scope and Limitations
 
+### Current Phase 2.1 Capabilities
+
 - Uses seeded sample data rather than a live CRM integration.
-- Uses deterministic business rules; no LLM-based decisions.
-- Does not use LangGraph, RAG, vector databases, or external agent orchestration.
+- Uses deterministic business rules for lead prioritization.
+- Uses LangGraph for fixed linear workflow orchestration.
+- Records workflow node execution order and status through execution tracing.
+- Preserves the existing five specialized agents and their business logic.
 - Does not automatically send messages or contact leads.
+
+### Out of Scope
+
+- Conditional workflow routing and dynamic agent selection.
+- LLM-based business decisions.
+- Retrieval-Augmented Generation (RAG).
+- Vector databases.
+- Model Context Protocol (MCP).
+- Live CRM integration.
+- Automatic customer communication.
+
+### Operational Limitations
+
 - Audit records are held in process-local memory and are not durable across backend restarts or service replacement.
 - Scoring weights and thresholds are provisional MVP assumptions.
 - Recommendations support operational prioritization and are not guaranteed sales outcomes.
@@ -3663,291 +4306,13 @@ Backend automated tests were also run locally:
 
 ## 13. Project Objective
 
-The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence, including shared workflow context, structured agent outputs, deterministic decision evidence, explanations, auditability, local Docker-based validation, and cloud deployment on Render within the AA007 Phase 1 scope.
-</file>
+The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence.
 
-<file path="docs/architecture.md">
-# Lead Follow-up Prioritization Intelligence
+The application combines five specialized deterministic agents, shared workflow context, LangGraph linear orchestration, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
 
-**Product:** APEX — Lead Intelligence Platform
-**Case ID:** AA007
-**Architecture Version:** 1.0
+Phase 2.1 evolves the existing workflow orchestration without changing established business rules, recommendations, or frontend and API integration.
 
-## 1. Architecture Overview
-
-APEX follows a deterministic multi-agent workflow architecture.
-
-A lead record enters through the API, and the Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the Recency, Engagement, and Fit & SLA Agents evaluate their respective business evidence.
-
-The Lead Priority Decision Agent combines the outputs and applies deterministic business rules to generate a recommendation.
-
-The workflow then produces a structured explanation and an audit record. The frontend exposes the business input, run-scoped shared workflow context, agent execution order and outputs, decision evidence, final recommendation, explanation, and audit reference so reviewers can inspect how each recommendation is produced.
-
-## 2. High-Level Workflow
-
-```text
-User / Frontend
-       |
-       v
-FastAPI Endpoint
-       |
-       v
-Context Builder
-       |
-       v
-Run-Scoped Shared Workflow Context
-       |
-       v
-Lead Intake Agent
-       |
-       +--------------------+
-       |                    |
-       v                    v
-   Valid Input          Invalid Input
-       |                    |
-       v                    v
- Recency Agent          REQUEST_DATA
-       |                    |
-       v                    |
- Engagement Agent           |
-       |                    |
-       v                    |
- Fit & SLA Agent             |
-       |                    |
-       v                    |
- Lead Priority Decision     |
-       |                    |
-       +--------------------+
-                 |
-                 v
-          Final Recommendation
-                 |
-          +------+------+
-          |             |
-          v             v
-     Explanation      Audit
-       Service       Service
-          |             |
-          +------+------+
-                 |
-                 v
-            API Response
-                 |
-                 v
-              Frontend
-```
-
-## 3. Agent Responsibilities
-
-### 3.1 Lead Intake Agent
-
-- Validates mandatory lead information.
-- Normalizes lead fields.
-- Identifies missing or invalid information.
-- Produces validated lead data.
-
-### 3.2 Recency Agent
-
-- Evaluates the lead's age and last-contact date.
-- Applies the configured recency scoring bands.
-- Produces the recency score and supporting evidence.
-
-### 3.3 Engagement Agent
-
-- Evaluates approved business engagement events.
-- Applies configured event weights.
-- Produces the engagement score and supporting evidence.
-
-### 3.4 Fit & SLA Agent
-
-- Evaluates declared business need.
-- Checks pending follow-up commitments.
-- Identifies overdue follow-up conditions.
-- Produces fit and SLA outputs.
-
-### 3.5 Lead Priority Decision Agent
-
-- Combines the outputs from the preceding agents.
-- Applies deterministic decision precedence.
-- Produces the final action, priority score, reasons, and triggered rules.
-
-## 4. Workflow Context
-
-Each workflow execution uses its own context to carry information between agents.
-
-The context includes:
-
-- Workflow identifier.
-- Original lead record and normalized lead snapshot.
-- Lead Intake validation outcome and validated lead information, when valid.
-- Recency score.
-- Engagement score.
-- Fit score and SLA flags.
-- Individual agent outputs.
-- Final recommendation.
-- Explanation.
-- Audit reference.
-- Errors.
-
-This structure keeps the workflow state organized and makes individual executions easier to inspect.
-
-## 5. Decision and Scoring Layer
-
-The decision layer uses configured scoring weights and deterministic rules.
-
-The provisional scoring model allocates:
-
-| Component | Maximum points |
-|---|---:|
-| Recency | 30 |
-| Engagement | 40 |
-| Declared need / fit | 30 |
-| Total | 100 |
-
-Overdue follow-up commitments take precedence over ordinary score thresholds.
-
-Missing mandatory information results in `REQUEST_DATA`.
-
-The scoring configuration is an MVP implementation assumption and can be refined using approved business requirements and validated operational data.
-
-## 6. Explanation Service
-
-The Explanation Service generates a structured explanation from the workflow context.
-
-It communicates:
-
-- Which agents executed.
-- The final recommendation.
-- The supporting reasons.
-- Relevant evidence.
-- Known limitations.
-
-The explanation is based on deterministic workflow outputs rather than an external language model.
-
-## 7. Audit Service
-
-The Audit Service records information about workflow executions, including:
-
-- Workflow ID.
-- Audit reference.
-- Execution timestamp.
-- Agent execution sequence.
-- Agent outputs.
-- Triggered business rules.
-- Final recommendation.
-- Errors, where applicable.
-
-Audit records are stored in process-local memory in the current MVP. Persistent audit storage is outside the current implementation scope.
-
-## 8. API and Frontend Integration
-
-The FastAPI backend exposes endpoints for health checks, lead prioritization, scenario listing, and scenario execution.
-
-The React and TypeScript frontend communicates with the backend through the Vite development proxy during local development.
-
-In the production deployment, the frontend uses Nginx to forward requests under `/api/` to the configured backend service. The browser communicates with the frontend origin, while Nginx handles backend routing.
-
-The dashboard presents scenario selection, recommendations, priority scores, agent execution information, explanations, and audit details.
-
-## 9. Docker Deployment Architecture
-
-The application is containerized using Docker Compose while preserving the existing backend and frontend responsibilities.
-
-### Backend Container
-
-- Built from `backend/Dockerfile`.
-- Uses Python 3.11 with FastAPI and Uvicorn.
-- Listens on port `8002` inside the container.
-- Exposes the existing backend health endpoint at `/api/assistant/health`.
-
-### Frontend Container
-
-- Built from `frontend/Dockerfile` using a multi-stage build.
-- Uses Node.js to generate the React production build.
-- Uses Nginx to serve the static frontend files.
-- Publishes container port `80` on host port `8080`.
-
-### Container Communication
-
-- Docker Compose creates an internal network for the services.
-- Nginx forwards `/api/` requests to `http://backend:8002`.
-- The backend port is available to the frontend through the internal Docker network.
-- The frontend waits for the backend health check before starting.
-
-### Health Checks
-
-- Backend health is checked through `/api/assistant/health`.
-- Frontend health is checked through `/health`.
-- Docker Compose reports container health status.
-
-### Runtime and Persistence Limitation
-
-The audit service continues to use process-local in-memory storage. Audit records are not persisted across backend container restarts. No database or persistent audit volume is introduced in this phase.
-
-Dockerization changes the local deployment and serving arrangement; it does not change the deterministic business workflow or agent responsibilities.
-
-## 10. Cloud Deployment Architecture — Render (Phase 1.4)
-
-The application is deployed on Render using two independent Docker-based Web Services. This deployment preserves the existing multi-agent workflow and separates frontend presentation from backend execution.
-
-### Frontend Web Service
-
-- **Service:** `aa007-frontend`
-- **Public URL:** https://aa007-frontend.onrender.com
-- Built using `frontend/Dockerfile`.
-- Serves the React production build through Nginx on container port `80`.
-- Uses the `BACKEND_URL` environment variable to identify the backend service.
-
-### Backend Web Service
-
-- **Service:** `aa007-backend`
-- **Public URL:** https://aa007-backend.onrender.com
-- **Health endpoint:** `/api/assistant/health`
-- Built using `backend/Dockerfile`.
-- Runs FastAPI through Uvicorn on container port `8002`.
-
-### Cloud Request Flow
-
-1. The user opens the public frontend URL.
-2. Nginx serves the React application.
-3. The frontend makes same-origin requests under `/api/`.
-4. Nginx forwards those requests to the backend URL configured through `BACKEND_URL`.
-5. FastAPI executes the existing deterministic workflow and returns the response.
-6. The frontend displays agent outputs, shared workflow context, recommendation, explanation, and audit reference.
-
-### Environment Configuration
-
-The frontend Render service requires:
-
-| Variable | Configuration |
-|---|---|
-| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
-
-No application secrets are required for the current deployment.
-
-### Cloud Deployment Constraints
-
-- Both services use the Render Free instance type.
-- Free services may spin down after inactivity, causing a delay on the first request.
-- Audit records remain in process-local memory and may be lost when the backend restarts or is replaced.
-- No persistent database or external audit storage is configured.
-
-The cloud deployment changes the hosting and request-routing arrangement only. It does not change the agents, scoring model, business rules, or deterministic decision workflow.
-
-## 11. Technology and Design Constraints
-
-- Python and FastAPI for backend services.
-- Pydantic for structured data validation.
-- React and TypeScript for the user interface.
-- Deterministic scoring and decision rules.
-- Seeded sample data for reproducible demonstrations.
-- Pytest for backend testing.
-
-The current MVP intentionally excludes LLM-based decision-making, LangGraph, RAG, vector databases, live CRM integration, and automatic customer communication.
-
-## 12. Architecture Objective
-
-The architecture demonstrates how specialized agents can collaborate through a shared workflow context to produce explainable, auditable, and deterministic sales operations recommendations.
+The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.
 </file>
 
 </files>
