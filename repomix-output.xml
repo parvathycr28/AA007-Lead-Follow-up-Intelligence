@@ -540,40 +540,6 @@ class LeadPriorityOutput(BaseModel):
     reasons: List[str] = Field(default_factory=list)
 </file>
 
-<file path="backend/app/models/audit.py">
-from datetime import datetime
-from typing import Any, Dict, List
-
-from pydantic import BaseModel, Field
-
-
-class AuditRecord(BaseModel):
-    audit_reference: str
-    workflow_id: str
-    timestamp: datetime
-    lead_id: str
-
-    agent_sequence: List[str] = Field(
-        default_factory=list
-    )
-
-    agent_outputs: Dict[str, Any] = Field(
-        default_factory=dict
-    )
-
-    triggered_rules: List[str] = Field(
-        default_factory=list
-    )
-
-    final_recommendation: Dict[str, Any] = Field(
-        default_factory=dict
-    )
-
-    errors: List[str] = Field(
-        default_factory=list
-    )
-</file>
-
 <file path="backend/app/models/lead.py">
 from datetime import datetime
 from typing import Optional
@@ -609,54 +575,6 @@ class LeadRecord(BaseModel):
 
 <file path="backend/app/services/__init__.py">
 
-</file>
-
-<file path="backend/app/services/audit_service.py">
-from datetime import datetime, timezone
-from uuid import uuid4
-
-from app.models.audit import AuditRecord
-from app.models.workflow import WorkflowContext
-
-
-class AuditService:
-
-    # In-memory audit storage for the MVP.
-    audit_store: dict[str, AuditRecord] = {}
-
-    @classmethod
-    def record(cls, context: WorkflowContext) -> AuditRecord:
-
-        recommendation = context.final_recommendation or {}
-
-        triggered_rules = recommendation.get(
-            "triggered_rules",
-            [],
-        )
-
-        audit_reference = f"AUD-{uuid4().hex[:12].upper()}"
-
-        record = AuditRecord(
-            audit_reference=audit_reference,
-            workflow_id=context.workflow_id,
-            timestamp=datetime.now(timezone.utc),
-            lead_id=context.lead_record.lead_id,
-            agent_sequence=list(context.agent_outputs.keys()),
-            agent_outputs=context.agent_outputs.copy(),
-            triggered_rules=triggered_rules,
-            final_recommendation=recommendation.copy(),
-            errors=list(context.errors),
-        )
-
-        cls.audit_store[audit_reference] = record
-
-        context.audit_reference = audit_reference
-
-        return record
-
-    @classmethod
-    def get(cls, audit_reference: str) -> AuditRecord | None:
-        return cls.audit_store.get(audit_reference)
 </file>
 
 <file path="backend/app/services/context_builder.py">
@@ -1448,6 +1366,44 @@ class PrioritizationResponse(BaseModel):
     )
 </file>
 
+<file path="backend/app/models/audit.py">
+from datetime import datetime
+from typing import Any, Dict, List
+
+from pydantic import BaseModel, Field
+
+
+class AuditRecord(BaseModel):
+    audit_reference: str
+    workflow_id: str
+    timestamp: datetime
+    lead_id: str
+
+    agent_sequence: List[str] = Field(
+        default_factory=list
+    )
+
+    agent_outputs: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    triggered_rules: List[str] = Field(
+        default_factory=list
+    )
+
+    final_recommendation: Dict[str, Any] = Field(
+        default_factory=dict
+    )
+
+    errors: List[str] = Field(
+        default_factory=list
+    )
+
+    execution_trace: List[Dict[str, str]] = Field(
+        default_factory=list
+    )
+</file>
+
 <file path="backend/app/models/workflow.py">
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -1494,315 +1450,55 @@ class WorkflowContext(BaseModel):
     )
 </file>
 
-<file path="backend/app/services/workflow_graph.py">
-from langgraph.graph import END, START, StateGraph
+<file path="backend/app/services/audit_service.py">
+from datetime import datetime, timezone
+from uuid import uuid4
 
+from app.models.audit import AuditRecord
 from app.models.workflow import WorkflowContext
-from app.services.workflow_state import WorkflowState
-
-from app.services.context_builder import ContextBuilder
-from app.services.explanation_service import ExplanationService
-from app.services.audit_service import AuditService
-
-from app.agents.lead_intake_agent import LeadIntakeAgent
-from app.agents.recency_agent import RecencyAgent
-from app.agents.engagement_agent import EngagementAgent
-from app.agents.fit_sla_agent import FitSLAAgent
-from app.agents.lead_priority_agent import LeadPriorityAgent
 
 
-def add_trace(
-    context: WorkflowContext,
-    node: str,
-    status: str,
-) -> None:
-    context.execution_trace.append({
-        "node": node,
-        "status": status,
-    })
+class AuditService:
 
+    # In-memory audit storage for the MVP.
+    audit_store: dict[str, AuditRecord] = {}
 
-def build_context_node(state: WorkflowState) -> dict:
-    context = ContextBuilder.build(
-        state["lead_record"],
-        state.get("engagement_events", []),
-    )
+    @classmethod
+    def record(cls, context: WorkflowContext) -> AuditRecord:
 
-    add_trace(context, "build_context", "completed")
-
-    return {"context": context}
-
-
-def lead_intake_node(state: WorkflowState) -> dict:
-    context = state["context"]
-
-    try:
-        intake_result = LeadIntakeAgent.run(context)
-
-        if intake_result.status == "invalid":
-            context.final_recommendation = {
-                "action": "REQUEST_DATA",
-                "priority_score": 0,
-                "triggered_rules": [
-                    "MISSING_MANDATORY_DATA"
-                ],
-                "reasons": intake_result.errors,
-            }
-
-            add_trace(context, "lead_intake", "completed")
-
-            return {
-                "context": context,
-                "intake_valid": False,
-                "execution_failed": False,
-            }
-
-        add_trace(context, "lead_intake", "completed")
-
-        return {
-            "context": context,
-            "intake_valid": True,
-            "execution_failed": False,
-        }
-
-    except Exception as exc:
-        context.errors.append(str(exc))
-        add_trace(context, "lead_intake", "failed")
-
-        return {
-            "context": context,
-            "intake_valid": False,
-            "execution_failed": True,
-        }
-
-
-def route_after_intake(state: WorkflowState) -> str:
-    context = state["context"]
-
-    if state.get("execution_failed", False):
-        route = "workflow_error"
-        condition = "INTAKE_EXECUTION_FAILED"
-    elif not state.get("intake_valid", False):
-        route = "request_data"
-        condition = "MISSING_MANDATORY_DATA"
-    else:
-        route = "recency"
-        condition = "INTAKE_VALID"
-
-    context.execution_trace.append({
-        "node": "intake_router",
-        "status": "selected",
-        "route": route,
-        "condition": condition,
-    })
-
-    return route
-
-
-def run_agent_node(
-    state: WorkflowState,
-    node_name: str,
-    agent,
-) -> dict:
-    context = state["context"]
-
-    if not state.get("intake_valid", False):
-        add_trace(context, node_name, "skipped")
-        return {"context": context}
-
-    if state.get("execution_failed", False):
-        add_trace(context, node_name, "skipped")
-        return {"context": context}
-
-    try:
-        agent.run(context)
-        add_trace(context, node_name, "completed")
-
-        return {"context": context}
-
-    except Exception as exc:
-        context.errors.append(str(exc))
-        add_trace(context, node_name, "failed")
-
-        return {
-            "context": context,
-            "execution_failed": True,
-        }
-
-
-def recency_node(state: WorkflowState) -> dict:
-    return run_agent_node(
-        state,
-        "recency",
-        RecencyAgent,
-    )
-
-
-def engagement_node(state: WorkflowState) -> dict:
-    return run_agent_node(
-        state,
-        "engagement",
-        EngagementAgent,
-    )
-
-
-def fit_sla_node(state: WorkflowState) -> dict:
-    return run_agent_node(
-        state,
-        "fit_sla",
-        FitSLAAgent,
-    )
-
-
-def priority_decision_node(state: WorkflowState) -> dict:
-    return run_agent_node(
-        state,
-        "priority_decision",
-        LeadPriorityAgent,
-    )
-
-
-def route_after_priority(state: WorkflowState) -> str:
-    context = state["context"]
-
-    if state.get("execution_failed", False):
-        route = "workflow_error"
-        condition = "AGENT_EXECUTION_FAILED"
-    else:
         recommendation = context.final_recommendation or {}
+
         triggered_rules = recommendation.get(
-            "triggered_rules", []
+            "triggered_rules",
+            [],
         )
 
-        if "OVERDUE_FOLLOW_UP" in triggered_rules:
-            route = "overdue_follow_up"
-            condition = "OVERDUE_FOLLOW_UP"
-        elif "HIGH_PRIORITY_SCORE" in triggered_rules:
-            route = "high_priority"
-            condition = "HIGH_PRIORITY_SCORE"
-        elif "MODERATE_PRIORITY_SCORE" in triggered_rules:
-            route = "follow_up_soon"
-            condition = "MODERATE_PRIORITY_SCORE"
-        elif "LOW_PRIORITY_SCORE" in triggered_rules:
-            route = "nurture"
-            condition = "LOW_PRIORITY_SCORE"
-        else:
-            route = "workflow_error"
-            condition = "PRIORITY_ROUTE_NOT_IDENTIFIED"
+        audit_reference = f"AUD-{uuid4().hex[:12].upper()}"
 
-    context.execution_trace.append({
-        "node": "priority_router",
-        "status": "selected",
-        "route": route,
-        "condition": condition,
-    })
+        record = AuditRecord(
+            audit_reference=audit_reference,
+            workflow_id=context.workflow_id,
+            timestamp=datetime.now(timezone.utc),
+            lead_id=context.lead_record.lead_id,
+            agent_sequence=list(context.agent_outputs.keys()),
+            agent_outputs=context.agent_outputs.copy(),
+            triggered_rules=triggered_rules,
+            final_recommendation=recommendation.copy(),
+            errors=list(context.errors),
+            execution_trace=[
+                item.copy() for item in context.execution_trace
+            ],
+        )
 
-    return route
+        cls.audit_store[audit_reference] = record
 
+        context.audit_reference = audit_reference
 
-def route_node(
-    state: WorkflowState,
-    node_name: str,
-) -> dict:
-    context = state["context"]
-    add_trace(context, node_name, "completed")
-    return {"context": context}
+        return record
 
-
-def request_data_node(state: WorkflowState) -> dict:
-    return route_node(state, "request_data")
-
-
-def overdue_follow_up_node(state: WorkflowState) -> dict:
-    return route_node(state, "overdue_follow_up")
-
-
-def high_priority_node(state: WorkflowState) -> dict:
-    return route_node(state, "high_priority")
-
-
-def follow_up_soon_node(state: WorkflowState) -> dict:
-    return route_node(state, "follow_up_soon")
-
-
-def nurture_node(state: WorkflowState) -> dict:
-    return route_node(state, "nurture")
-
-
-def workflow_error_node(state: WorkflowState) -> dict:
-    return route_node(state, "workflow_error")
-
-
-def explanation_audit_node(state: WorkflowState) -> dict:
-    context = state["context"]
-
-    ExplanationService.build(context)
-    AuditService.record(context)
-
-    add_trace(context, "explanation_audit", "completed")
-
-    return {"context": context}
-
-
-def build_workflow_graph():
-    graph = StateGraph(WorkflowState)
-
-    graph.add_node("build_context", build_context_node)
-    graph.add_node("lead_intake", lead_intake_node)
-
-    graph.add_node("recency", recency_node)
-    graph.add_node("engagement", engagement_node)
-    graph.add_node("fit_sla", fit_sla_node)
-    graph.add_node("priority_decision", priority_decision_node)
-
-    graph.add_node("request_data", request_data_node)
-    graph.add_node("overdue_follow_up", overdue_follow_up_node)
-    graph.add_node("high_priority", high_priority_node)
-    graph.add_node("follow_up_soon", follow_up_soon_node)
-    graph.add_node("nurture", nurture_node)
-    graph.add_node("workflow_error", workflow_error_node)
-
-    graph.add_node("explanation_audit", explanation_audit_node)
-
-    graph.add_edge(START, "build_context")
-    graph.add_edge("build_context", "lead_intake")
-
-    graph.add_conditional_edges(
-        "lead_intake",
-        route_after_intake,
-        {
-            "recency": "recency",
-            "request_data": "request_data",
-            "workflow_error": "workflow_error",
-        },
-    )
-
-    graph.add_edge("recency", "engagement")
-    graph.add_edge("engagement", "fit_sla")
-    graph.add_edge("fit_sla", "priority_decision")
-
-    graph.add_conditional_edges(
-        "priority_decision",
-        route_after_priority,
-        {
-            "overdue_follow_up": "overdue_follow_up",
-            "high_priority": "high_priority",
-            "follow_up_soon": "follow_up_soon",
-            "nurture": "nurture",
-            "workflow_error": "workflow_error",
-        },
-    )
-
-    graph.add_edge("request_data", "explanation_audit")
-    graph.add_edge("overdue_follow_up", "explanation_audit")
-    graph.add_edge("high_priority", "explanation_audit")
-    graph.add_edge("follow_up_soon", "explanation_audit")
-    graph.add_edge("nurture", "explanation_audit")
-    graph.add_edge("workflow_error", "explanation_audit")
-
-    graph.add_edge("explanation_audit", END)
-
-    return graph.compile()
+    @classmethod
+    def get(cls, audit_reference: str) -> AuditRecord | None:
+        return cls.audit_store.get(audit_reference)
 </file>
 
 <file path="backend/app/services/workflow_service.py">
@@ -2740,6 +2436,366 @@ services:
       start_period: 5s
 </file>
 
+<file path="backend/app/services/workflow_graph.py">
+from langgraph.graph import END, START, StateGraph
+
+from app.models.workflow import WorkflowContext
+from app.services.workflow_state import WorkflowState
+
+from app.services.context_builder import ContextBuilder
+from app.services.explanation_service import ExplanationService
+from app.services.audit_service import AuditService
+
+from app.agents.lead_intake_agent import LeadIntakeAgent
+from app.agents.recency_agent import RecencyAgent
+from app.agents.engagement_agent import EngagementAgent
+from app.agents.fit_sla_agent import FitSLAAgent
+from app.agents.lead_priority_agent import LeadPriorityAgent
+
+
+def add_trace(
+    context: WorkflowContext,
+    node: str,
+    status: str,
+) -> None:
+    context.execution_trace.append({
+        "node": node,
+        "status": status,
+    })
+
+
+def build_context_node(state: WorkflowState) -> dict:
+    context = ContextBuilder.build(
+        state["lead_record"],
+        state.get("engagement_events", []),
+    )
+
+    add_trace(context, "build_context", "completed")
+
+    return {"context": context}
+
+
+def lead_intake_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
+    try:
+        intake_result = LeadIntakeAgent.run(context)
+
+        if intake_result.status == "invalid":
+            context.final_recommendation = {
+                "action": "REQUEST_DATA",
+                "priority_score": 0,
+                "triggered_rules": [
+                    "MISSING_MANDATORY_DATA"
+                ],
+                "reasons": intake_result.errors,
+            }
+
+            add_trace(context, "lead_intake", "completed")
+
+            return {
+                "context": context,
+                "intake_valid": False,
+                "execution_failed": False,
+            }
+
+        add_trace(context, "lead_intake", "completed")
+
+        return {
+            "context": context,
+            "intake_valid": True,
+            "execution_failed": False,
+        }
+
+    except Exception as exc:
+        context.errors.append(str(exc))
+        add_trace(context, "lead_intake", "failed")
+
+        return {
+            "context": context,
+            "intake_valid": False,
+            "execution_failed": True,
+        }
+
+
+def route_after_intake(state: WorkflowState) -> str:
+    context = state["context"]
+
+    if state.get("execution_failed", False):
+        route = "workflow_error"
+        condition = "INTAKE_EXECUTION_FAILED"
+    elif not state.get("intake_valid", False):
+        route = "request_data"
+        condition = "MISSING_MANDATORY_DATA"
+    else:
+        route = "recency"
+        condition = "INTAKE_VALID"
+
+    context.execution_trace.append({
+        "node": "intake_router",
+        "status": "selected",
+        "route": route,
+        "condition": condition,
+    })
+
+    return route
+
+
+def run_agent_node(
+    state: WorkflowState,
+    node_name: str,
+    agent,
+) -> dict:
+    context = state["context"]
+
+    if not state.get("intake_valid", False):
+        add_trace(context, node_name, "skipped")
+        return {"context": context}
+
+    if state.get("execution_failed", False):
+        add_trace(context, node_name, "skipped")
+        return {"context": context}
+
+    try:
+        agent.run(context)
+        add_trace(context, node_name, "completed")
+
+        return {"context": context}
+
+    except Exception as exc:
+        context.errors.append(str(exc))
+        add_trace(context, node_name, "failed")
+
+        return {
+            "context": context,
+            "execution_failed": True,
+        }
+
+
+def recency_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "recency",
+        RecencyAgent,
+    )
+
+
+def engagement_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "engagement",
+        EngagementAgent,
+    )
+
+
+def fit_sla_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "fit_sla",
+        FitSLAAgent,
+    )
+
+
+def priority_decision_node(state: WorkflowState) -> dict:
+    return run_agent_node(
+        state,
+        "priority_decision",
+        LeadPriorityAgent,
+    )
+
+
+def route_after_priority(state: WorkflowState) -> str:
+    context = state["context"]
+
+    if state.get("execution_failed", False):
+        route = "workflow_error"
+        condition = "AGENT_EXECUTION_FAILED"
+    else:
+        recommendation = context.final_recommendation or {}
+        triggered_rules = recommendation.get(
+            "triggered_rules", []
+        )
+
+        if "OVERDUE_FOLLOW_UP" in triggered_rules:
+            route = "overdue_follow_up"
+            condition = "OVERDUE_FOLLOW_UP"
+        elif "HIGH_PRIORITY_SCORE" in triggered_rules:
+            route = "high_priority"
+            condition = "HIGH_PRIORITY_SCORE"
+        elif "MODERATE_PRIORITY_SCORE" in triggered_rules:
+            route = "follow_up_soon"
+            condition = "MODERATE_PRIORITY_SCORE"
+        elif "LOW_PRIORITY_SCORE" in triggered_rules:
+            route = "nurture"
+            condition = "LOW_PRIORITY_SCORE"
+        else:
+            route = "workflow_error"
+            condition = "PRIORITY_ROUTE_NOT_IDENTIFIED"
+
+    context.execution_trace.append({
+        "node": "priority_router",
+        "status": "selected",
+        "route": route,
+        "condition": condition,
+    })
+
+    return route
+
+
+def route_node(
+    state: WorkflowState,
+    node_name: str,
+) -> dict:
+    context = state["context"]
+    add_trace(context, node_name, "completed")
+    return {"context": context}
+
+
+def request_data_node(state: WorkflowState) -> dict:
+    return route_node(state, "request_data")
+
+
+def overdue_follow_up_node(state: WorkflowState) -> dict:
+    return route_node(state, "overdue_follow_up")
+
+
+def high_priority_node(state: WorkflowState) -> dict:
+    return route_node(state, "high_priority")
+
+
+def follow_up_soon_node(state: WorkflowState) -> dict:
+    return route_node(state, "follow_up_soon")
+
+
+def nurture_node(state: WorkflowState) -> dict:
+    return route_node(state, "nurture")
+
+
+def workflow_error_node(state: WorkflowState) -> dict:
+    return route_node(state, "workflow_error")
+
+
+def explanation_audit_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
+    ExplanationService.build(context)
+    add_trace(context, "explanation_audit", "completed")
+    AuditService.record(context)
+
+    return {"context": context}
+
+
+def build_workflow_graph():
+    graph = StateGraph(WorkflowState)
+
+    graph.add_node("build_context", build_context_node)
+    graph.add_node("lead_intake", lead_intake_node)
+
+    graph.add_node("recency", recency_node)
+    graph.add_node("engagement", engagement_node)
+    graph.add_node("fit_sla", fit_sla_node)
+    graph.add_node("priority_decision", priority_decision_node)
+
+    graph.add_node("request_data", request_data_node)
+    graph.add_node("overdue_follow_up", overdue_follow_up_node)
+    graph.add_node("high_priority", high_priority_node)
+    graph.add_node("follow_up_soon", follow_up_soon_node)
+    graph.add_node("nurture", nurture_node)
+    graph.add_node("workflow_error", workflow_error_node)
+
+    graph.add_node("explanation_audit", explanation_audit_node)
+
+    graph.add_edge(START, "build_context")
+    graph.add_edge("build_context", "lead_intake")
+
+    graph.add_conditional_edges(
+        "lead_intake",
+        route_after_intake,
+        {
+            "recency": "recency",
+            "request_data": "request_data",
+            "workflow_error": "workflow_error",
+        },
+    )
+
+    graph.add_edge("recency", "engagement")
+    graph.add_edge("engagement", "fit_sla")
+    graph.add_edge("fit_sla", "priority_decision")
+
+    graph.add_conditional_edges(
+        "priority_decision",
+        route_after_priority,
+        {
+            "overdue_follow_up": "overdue_follow_up",
+            "high_priority": "high_priority",
+            "follow_up_soon": "follow_up_soon",
+            "nurture": "nurture",
+            "workflow_error": "workflow_error",
+        },
+    )
+
+    graph.add_edge("request_data", "explanation_audit")
+    graph.add_edge("overdue_follow_up", "explanation_audit")
+    graph.add_edge("high_priority", "explanation_audit")
+    graph.add_edge("follow_up_soon", "explanation_audit")
+    graph.add_edge("nurture", "explanation_audit")
+    graph.add_edge("workflow_error", "explanation_audit")
+
+    graph.add_edge("explanation_audit", END)
+
+    return graph.compile()
+</file>
+
+<file path="backend/Dockerfile">
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY backend/requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app ./app
+
+EXPOSE 8002
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+</file>
+
+<file path="frontend/nginx.conf">
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_ssl_server_name on;
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /health {
+        access_log off;
+        default_type text/plain;
+        return 200 "healthy\n";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+</file>
+
 <file path="backend/tests/test_workflow.py">
 import pytest
 from fastapi.testclient import TestClient
@@ -2801,7 +2857,29 @@ def test_seed_scenario_workflow(
     assert len(context.agent_outputs) == 5
     assert context.explanation is not None
     assert context.audit_reference is not None
-    assert AuditService.get(context.audit_reference) is not None
+    audit_record = AuditService.get(context.audit_reference)
+    assert audit_record is not None
+    assert audit_record.execution_trace == context.execution_trace
+
+    assert any(
+        item["node"] == "intake_router"
+        and item.get("route") == "recency"
+        and item.get("condition") == "INTAKE_VALID"
+        for item in audit_record.execution_trace
+    )
+
+    assert any(
+        item["node"] == "priority_router"
+        and item.get("route") == expected_route
+        and item.get("condition") == expected_condition
+        for item in audit_record.execution_trace
+    )
+
+    assert audit_record.execution_trace[-1] == {
+        "node": "explanation_audit",
+        "status": "completed",
+    }
+
     assert context.errors == []
 
     actual_nodes = [
@@ -2988,56 +3066,6 @@ def test_high_priority_score_uses_high_priority_route():
     assert context.explanation is not None
     assert context.audit_reference is not None
     assert context.errors == []
-</file>
-
-<file path="backend/Dockerfile">
-FROM python:3.11-slim
-
-WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-COPY backend/requirements.txt .
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-COPY backend/app ./app
-
-EXPOSE 8002
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
-</file>
-
-<file path="frontend/nginx.conf">
-server {
-    listen 80;
-    server_name _;
-
-    root /usr/share/nginx/html;
-    index index.html;
-
-    location /api/ {
-        proxy_pass ${BACKEND_URL};
-        proxy_ssl_server_name on;
-        proxy_http_version 1.1;
-        proxy_set_header Host $proxy_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /health {
-        access_log off;
-        default_type text/plain;
-        return 200 "healthy\n";
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
 </file>
 
 <file path="frontend/src/App.tsx">
@@ -3768,29 +3796,28 @@ export default App
 
 **Product:** APEX — Lead Intelligence Platform
 **Case ID:** AA007
-**Architecture Version:** 2.1
+**Architecture Version:** 2.2
 
 ## 1. Architecture Overview
 
 APEX follows a deterministic multi-agent workflow architecture orchestrated using LangGraph.
 
-A lead record enters through the FastAPI endpoint. The LangGraph StateGraph executes a linear sequence of workflow nodes, beginning with the Context Builder and followed by the Lead Intake Agent, Recency Agent, Engagement Agent, Fit & SLA Agent, Lead Priority Decision Agent, and Explanation & Audit stage.
+A lead record enters through the FastAPI endpoint. The LangGraph StateGraph initializes the workflow context, validates the lead, and uses deterministic conditional routers to select the appropriate business execution path. Valid leads proceed through the Recency, Engagement, Fit & SLA, and Lead Priority Decision stages. Missing mandatory data and workflow failures follow dedicated outcome paths.
 
 The Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the analytical agents execute.
 
-For valid leads, all five agents execute in sequence. For invalid leads with missing mandatory information, the analytical agent nodes are skipped while the workflow continues to explanation and audit generation.
+For valid leads, all five agents execute. Leads with missing mandatory information follow the `request_data` path and skip the four downstream analytical agents. After priority evaluation, the graph selects an outcome path based on the deterministic triggered business rule. Every outcome path converges on explanation and audit generation.
 
-LangGraph manages the orchestration and shared workflow state. It does not make business decisions. The existing agents, deterministic scoring rules, recommendation logic, explanations, and audit behaviour remain unchanged.
+LangGraph manages conditional orchestration and shared workflow state. It does not independently make business decisions. The existing agents, deterministic scoring rules, recommendation logic, and business rules retain decision-making authority.
 
-The workflow also records an execution trace containing the node name and execution status. This makes the orchestration sequence inspectable.
+The workflow records node execution statuses and router selections, including the selected route and triggering condition. The complete execution trace is copied into the audit record, including the final explanation and audit completion entry.
 
 The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references.
 
 ## 2. High-Level Workflow
 
-The FastAPI endpoint invokes the LangGraph workflow. The compiled StateGraph executes the following nodes in a fixed linear sequence:
+The FastAPI endpoint invokes the compiled LangGraph StateGraph. The graph uses conditional edges after lead intake and priority decision to select the appropriate execution path:
 
-```text
 User / Frontend
        |
        v
@@ -3806,38 +3833,67 @@ LangGraph StateGraph
    lead_intake
        |
        v
-     recency
+   Intake Router
        |
-       v
-   engagement
-       |
-       v
-     fit_sla
-       |
-       v
-priority_decision
-       |
-       v
-explanation_audit
-       |
-       v
-      END
-       |
-       v
-  API Response
-       |
-       v
-    Frontend
-```
+       +--------------------+--------------------+
+       |                    |                    |
+   Valid data          Missing data         Intake failure
+       |                    |                    |
+       v                    v                    v
+    recency             request_data        workflow_error
+       |                    |                    |
+       v                    +---------+----------+
+   engagement                       |
+       |                            |
+       v                            |
+     fit_sla                        |
+       |                            |
+       v                            |
+ priority_decision                  |
+       |                            |
+       v                            |
+  Priority Router                   |
+       |                            |
+       +--> overdue_follow_up       |
+       +--> high_priority           |
+       +--> follow_up_soon          |
+       +--> nurture                 |
+       +--> workflow_error          |
+       |                            |
+       +-------------+--------------+
+                     |
+                     v
+             explanation_audit
+                     |
+                     v
+                    END
+                     |
+                     v
+               API Response
+                     |
+                     v
+                  Frontend
 
 ### Workflow Execution Behaviour
 
-- **Valid lead:** All seven workflow nodes execute in sequence, and all five agents produce their outputs.
-- **Invalid lead:** The Context Builder and Lead Intake nodes execute. The four downstream analytical agent nodes are marked as skipped. The workflow still proceeds to explanation and audit generation.
-- **Execution trace:** Each node records its name and status (`completed`, `skipped`, or `failed`) in the shared workflow context.
+- **Valid lead:** Intake validation succeeds, followed by the four analytical agents and the priority router.
+- **Missing mandatory data:** The intake router selects `request_data`. The four downstream analytical agents are skipped.
+- **Overdue follow-up:** The priority router selects `overdue_follow_up` when the `OVERDUE_FOLLOW_UP` rule is triggered.
+- **High priority:** The priority router selects `high_priority` when the `HIGH_PRIORITY_SCORE` rule is triggered.
+- **Moderate priority:** The priority router selects `follow_up_soon` when the `MODERATE_PRIORITY_SCORE` rule is triggered.
+- **Low priority:** The priority router selects `nurture` when the `LOW_PRIORITY_SCORE` rule is triggered.
+- **Workflow failure:** The graph selects `workflow_error` when an execution failure occurs or a priority route cannot be identified.
+- **Explanation and audit:** All outcome paths converge on `explanation_audit`, which builds the explanation, appends its completion entry, and records the audit information.
 
-The graph uses fixed edges between nodes. Conditional routing and dynamic agent selection are not part of the current Phase 2.1 implementation.
+### Conditional Routing and Execution Trace
 
+The intake router records its selected route and condition, such as `recency` with `INTAKE_VALID` or `request_data` with `MISSING_MANDATORY_DATA`.
+
+The priority router records the selected outcome route and the corresponding triggered rule. Overdue follow-up takes precedence over the high-priority score route.
+
+Each execution-trace entry records a node name and status. Router entries additionally contain `route` and `condition` fields.
+
+The complete execution trace is copied into the audit record after the `explanation_audit` completion entry has been appended. This preserves the selected business paths and their triggering conditions for inspection.
 ## 3. Agent Responsibilities
 
 ### 3.1 Lead Intake Agent
@@ -3893,9 +3949,9 @@ The context includes:
 
 The LangGraph StateGraph uses a shared workflow state to pass the lead record, engagement events, and workflow context between nodes.
 
-The execution trace records the sequence in which nodes execute. Each entry contains a node name and a status, such as `completed`, `skipped`, or `failed`.
+The execution trace records node names and statuses, along with router selections. Router entries include the selected `route` and triggering `condition`. The audit service copies the complete trace into the audit record so that the workflow path can be inspected alongside the recommendation and agent outputs.
 
-This structure keeps workflow state organized, supports execution inspection, and makes individual workflow runs easier to validate.
+This structure supports execution inspection, route validation, and audit traceability. Audit storage remains process-local in the current MVP.
 
 ## 5. Decision and Scoring Layer
 
@@ -3942,8 +3998,11 @@ The Audit Service records information about workflow executions, including:
 - Triggered business rules.
 - Final recommendation.
 - Errors, where applicable.
+- Complete execution trace, including selected routes, triggering conditions, and node statuses.
 
-Audit records are stored in process-local memory in the current MVP. Persistent audit storage is outside the current implementation scope.
+The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended.
+
+Audit records are stored in process-local memory in the current MVP. The execution trace is preserved in each audit record, but records are not durable across backend restarts. Persistent audit storage is outside the current implementation scope.
 
 ## 8. API and Frontend Integration
 
@@ -4045,7 +4104,7 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - Python 3.11 for backend development.
 - FastAPI for backend API services.
 - Pydantic for structured data validation.
-- LangGraph for deterministic linear workflow orchestration using `StateGraph`.
+- LangGraph for deterministic conditional workflow orchestration using StateGraph.
 - React and TypeScript for the user interface.
 - Deterministic scoring and decision rules.
 - Seeded sample data for reproducible demonstrations.
@@ -4053,13 +4112,15 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - Docker and Docker Compose for containerized local validation.
 - Render for cloud deployment.
 
-### Current Phase 2.1 Scope
+### Current Phase 2.2 Scope
 
-The current implementation uses LangGraph to orchestrate the existing five-agent workflow through a fixed sequence of nodes.
+The current implementation uses LangGraph conditional routing to orchestrate the existing five-agent workflow through deterministic business paths.
+
+The intake router selects the appropriate path based on mandatory-data validation. The priority router selects an outcome path based on deterministic business rules and triggered priority conditions.
 
 The following capabilities remain outside the current scope:
 
-- Conditional workflow routing.
+- Dynamic agent selection beyond the defined deterministic workflow routes.
 - LLM-based decision-making.
 - Retrieval-Augmented Generation (RAG).
 - Vector databases.
@@ -4067,17 +4128,15 @@ The following capabilities remain outside the current scope:
 - Live CRM integration.
 - Automatic customer communication.
 
-LangGraph manages workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
+LangGraph manages conditional workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
 
 ## 12. Architecture Objective
 
-The architecture demonstrates how specialized deterministic agents collaborate through a shared workflow context to produce explainable, auditable, and reproducible sales operations recommendations.
+LangGraph provides explicit conditional workflow orchestration through a StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
 
-LangGraph provides explicit workflow orchestration through a linear StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
+The architecture preserves established business outcomes while making workflow execution, selected routes, triggering conditions, and audit trace information observable.
 
-The architecture preserves the established business outcomes while making workflow execution order and node status observable through execution tracing.
-
-## 13. Phase 2.1 — LangGraph Linear Orchestration
+## 13. Historical Implementation — Phase 2.1 Linear Orchestration
 
 ### 13.1 Implementation
 
@@ -4168,7 +4227,7 @@ Conditional routing, dynamic workflow paths, LLM-based decisions, RAG, vector da
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 2.1 — LangGraph Linear Orchestration
+**Current Phase:** 2.2 — LangGraph Conditional Routing
 
 ## 1. Overview
 
@@ -4176,7 +4235,7 @@ APEX is a deterministic, multi-agent application that helps sales teams prioriti
 
 The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
 
-The existing five specialized agents are orchestrated through a LangGraph linear StateGraph workflow. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
+The existing five specialized agents are orchestrated through a LangGraph StateGraph with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -4211,25 +4270,39 @@ The workflow consists of five specialized agents:
 4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
 5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
 
-### LangGraph Orchestration — Phase 2.1
+### LangGraph Orchestration — Phase 2.2
 
-The agents are orchestrated through a LangGraph `StateGraph` using a fixed linear sequence of seven workflow nodes:
+The five specialized agents are orchestrated through a LangGraph `StateGraph` using deterministic conditional routing. The graph uses shared workflow state and selects different execution paths based on mandatory-data validation and the deterministic priority decision.
 
-1. `build_context`
-2. `lead_intake`
-3. `recency`
-4. `engagement`
-5. `fit_sla`
-6. `priority_decision`
-7. `explanation_audit`
+The workflow includes these core processing nodes:
 
-A run-scoped shared workflow context carries lead data, agent outputs, recommendations, explanations, and audit information between nodes.
+1. `build_context` — initializes the shared workflow context.
+2. `lead_intake` — validates and normalizes mandatory lead information.
+3. `recency` — evaluates lead age and last-contact recency.
+4. `engagement` — scores approved business engagement events.
+5. `fit_sla` — evaluates declared business need and pending follow-up commitments.
+6. `priority_decision` — calculates the deterministic recommendation.
+7. `explanation_audit` — generates the explanation and audit information for every outcome path.
 
-Each node records its name and execution status in the workflow execution trace.
+**Conditional routing after Lead Intake:**
 
-For valid leads, all seven nodes execute in sequence. For invalid leads, the four downstream analytical agent nodes are skipped, while explanation and audit generation still take place.
+- Valid mandatory data → continue to `recency` and the analytical agents.
+- Missing mandatory data → `request_data` route, producing `REQUEST_DATA`.
+- Intake execution failure → `workflow_error` route.
 
-LangGraph manages orchestration and shared state. It does not replace the existing deterministic business rules or make independent business decisions.
+**Conditional routing after Priority Decision:**
+
+- `OVERDUE_FOLLOW_UP` → `overdue_follow_up` route.
+- `HIGH_PRIORITY_SCORE` → `high_priority` route.
+- `MODERATE_PRIORITY_SCORE` → `follow_up_soon` route.
+- `LOW_PRIORITY_SCORE` → `nurture` route.
+- Agent execution failure or an unidentified priority route → `workflow_error` route.
+
+Each router records its selected route and triggering condition in the execution trace. The selected outcome node then leads to the shared `explanation_audit` node, ensuring that explanations and audit information are generated across the different paths.
+
+The audit record preserves a copy of the complete execution trace, including node execution statuses, selected routes, routing conditions, and the final `explanation_audit` completion entry.
+
+LangGraph manages conditional orchestration and shared state. All validation, scoring, recommendation selection, and business rules remain deterministic; routing does not delegate business decisions to an LLM.
 
 ## 5. Deterministic Decision Logic
 
@@ -4266,7 +4339,7 @@ These are illustrative sample records, not live customer data.
 - Python 3.11
 - FastAPI
 - Pydantic
-- LangGraph (`StateGraph` linear orchestration)
+- LangGraph (`StateGraph` conditional routing)
 - Pytest
 
 **Frontend**
@@ -4318,7 +4391,7 @@ AA007-Lead-Follow-up-Prioritization-Intelligence/
 The backend workflow modules are:
 
 - `workflow_service.py` — invokes the compiled LangGraph workflow.
-- `workflow_graph.py` — defines the seven-node linear StateGraph.
+- `workflow_graph.py` — defines the conditional-routing StateGraph and its outcome paths.
 - `workflow_state.py` — defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
@@ -4443,7 +4516,7 @@ The public backend health endpoint returned:
 **Operational limitations:**
 
 - Render free services may spin down after inactivity, resulting in a delay during the first request.
-- Audit records remain in process-local memory. They are not durable and may be lost when the backend restarts.
+- Audit records, including their complete execution traces, remain in process-local memory. They are not durable and may be lost when the backend restarts.
 - No persistent database or external audit storage has been configured.
 - No application secrets are required for the current deployment.
 
@@ -4520,24 +4593,24 @@ Backend automated tests were also run locally:
 
 `python -m pytest -q`
 
-**Result:** 9 passed, 1 non-blocking deprecation warning.
+**Result:** 10 passed.
 
 **Audit limitation:** Audit records are stored in process memory and are not persistent across backend container restarts.
 
 ## 12. Scope and Limitations
 
-### Current Phase 2.1 Capabilities
+### Current Phase 2.2 Capabilities
 
 - Uses seeded sample data rather than a live CRM integration.
 - Uses deterministic business rules for lead prioritization.
-- Uses LangGraph for fixed linear workflow orchestration.
-- Records workflow node execution order and status through execution tracing.
+- Uses LangGraph conditional routing based on mandatory-data validation and deterministic priority rules.
+- Records workflow node execution, selected routes, and triggering conditions through execution tracing and preserves the complete trace in each audit record.
 - Preserves the existing five specialized agents and their business logic.
 - Does not automatically send messages or contact leads.
 
 ### Out of Scope
 
-- Conditional workflow routing and dynamic agent selection.
+- Dynamic agent selection beyond the defined deterministic workflow routes.
 - LLM-based business decisions.
 - Retrieval-Augmented Generation (RAG).
 - Vector databases.
@@ -4556,9 +4629,9 @@ Backend automated tests were also run locally:
 
 The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence.
 
-The application combines five specialized deterministic agents, shared workflow context, LangGraph linear orchestration, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
+The application combines five specialized deterministic agents, shared workflow context, LangGraph conditional routing, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
 
-Phase 2.1 evolves the existing workflow orchestration without changing established business rules, recommendations, or frontend and API integration.
+Phase 2.2 extends the existing workflow with deterministic conditional routing while preserving established business rules, recommendations, and frontend and API integration.
 
 The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.
 </file>
