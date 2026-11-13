@@ -2,29 +2,28 @@
 
 **Product:** APEX — Lead Intelligence Platform
 **Case ID:** AA007
-**Architecture Version:** 2.1
+**Architecture Version:** 2.2
 
 ## 1. Architecture Overview
 
 APEX follows a deterministic multi-agent workflow architecture orchestrated using LangGraph.
 
-A lead record enters through the FastAPI endpoint. The LangGraph StateGraph executes a linear sequence of workflow nodes, beginning with the Context Builder and followed by the Lead Intake Agent, Recency Agent, Engagement Agent, Fit & SLA Agent, Lead Priority Decision Agent, and Explanation & Audit stage.
+A lead record enters through the FastAPI endpoint. The LangGraph StateGraph initializes the workflow context, validates the lead, and uses deterministic conditional routers to select the appropriate business execution path. Valid leads proceed through the Recency, Engagement, Fit & SLA, and Lead Priority Decision stages. Missing mandatory data and workflow failures follow dedicated outcome paths.
 
 The Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the analytical agents execute.
 
-For valid leads, all five agents execute in sequence. For invalid leads with missing mandatory information, the analytical agent nodes are skipped while the workflow continues to explanation and audit generation.
+For valid leads, all five agents execute. Leads with missing mandatory information follow the `request_data` path and skip the four downstream analytical agents. After priority evaluation, the graph selects an outcome path based on the deterministic triggered business rule. Every outcome path converges on explanation and audit generation.
 
-LangGraph manages the orchestration and shared workflow state. It does not make business decisions. The existing agents, deterministic scoring rules, recommendation logic, explanations, and audit behaviour remain unchanged.
+LangGraph manages conditional orchestration and shared workflow state. It does not independently make business decisions. The existing agents, deterministic scoring rules, recommendation logic, and business rules retain decision-making authority.
 
-The workflow also records an execution trace containing the node name and execution status. This makes the orchestration sequence inspectable.
+The workflow records node execution statuses and router selections, including the selected route and triggering condition. The complete execution trace is copied into the audit record, including the final explanation and audit completion entry.
 
 The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references.
 
 ## 2. High-Level Workflow
 
-The FastAPI endpoint invokes the LangGraph workflow. The compiled StateGraph executes the following nodes in a fixed linear sequence:
+The FastAPI endpoint invokes the compiled LangGraph StateGraph. The graph uses conditional edges after lead intake and priority decision to select the appropriate execution path:
 
-```text
 User / Frontend
        |
        v
@@ -40,38 +39,67 @@ LangGraph StateGraph
    lead_intake
        |
        v
-     recency
+   Intake Router
        |
-       v
-   engagement
-       |
-       v
-     fit_sla
-       |
-       v
-priority_decision
-       |
-       v
-explanation_audit
-       |
-       v
-      END
-       |
-       v
-  API Response
-       |
-       v
-    Frontend
-```
+       +--------------------+--------------------+
+       |                    |                    |
+   Valid data          Missing data         Intake failure
+       |                    |                    |
+       v                    v                    v
+    recency             request_data        workflow_error
+       |                    |                    |
+       v                    +---------+----------+
+   engagement                       |
+       |                            |
+       v                            |
+     fit_sla                        |
+       |                            |
+       v                            |
+ priority_decision                  |
+       |                            |
+       v                            |
+  Priority Router                   |
+       |                            |
+       +--> overdue_follow_up       |
+       +--> high_priority           |
+       +--> follow_up_soon          |
+       +--> nurture                 |
+       +--> workflow_error          |
+       |                            |
+       +-------------+--------------+
+                     |
+                     v
+             explanation_audit
+                     |
+                     v
+                    END
+                     |
+                     v
+               API Response
+                     |
+                     v
+                  Frontend
 
 ### Workflow Execution Behaviour
 
-- **Valid lead:** All seven workflow nodes execute in sequence, and all five agents produce their outputs.
-- **Invalid lead:** The Context Builder and Lead Intake nodes execute. The four downstream analytical agent nodes are marked as skipped. The workflow still proceeds to explanation and audit generation.
-- **Execution trace:** Each node records its name and status (`completed`, `skipped`, or `failed`) in the shared workflow context.
+- **Valid lead:** Intake validation succeeds, followed by the four analytical agents and the priority router.
+- **Missing mandatory data:** The intake router selects `request_data`. The four downstream analytical agents are skipped.
+- **Overdue follow-up:** The priority router selects `overdue_follow_up` when the `OVERDUE_FOLLOW_UP` rule is triggered.
+- **High priority:** The priority router selects `high_priority` when the `HIGH_PRIORITY_SCORE` rule is triggered.
+- **Moderate priority:** The priority router selects `follow_up_soon` when the `MODERATE_PRIORITY_SCORE` rule is triggered.
+- **Low priority:** The priority router selects `nurture` when the `LOW_PRIORITY_SCORE` rule is triggered.
+- **Workflow failure:** The graph selects `workflow_error` when an execution failure occurs or a priority route cannot be identified.
+- **Explanation and audit:** All outcome paths converge on `explanation_audit`, which builds the explanation, appends its completion entry, and records the audit information.
 
-The graph uses fixed edges between nodes. Conditional routing and dynamic agent selection are not part of the current Phase 2.1 implementation.
+### Conditional Routing and Execution Trace
 
+The intake router records its selected route and condition, such as `recency` with `INTAKE_VALID` or `request_data` with `MISSING_MANDATORY_DATA`.
+
+The priority router records the selected outcome route and the corresponding triggered rule. Overdue follow-up takes precedence over the high-priority score route.
+
+Each execution-trace entry records a node name and status. Router entries additionally contain `route` and `condition` fields.
+
+The complete execution trace is copied into the audit record after the `explanation_audit` completion entry has been appended. This preserves the selected business paths and their triggering conditions for inspection.
 ## 3. Agent Responsibilities
 
 ### 3.1 Lead Intake Agent
@@ -127,9 +155,9 @@ The context includes:
 
 The LangGraph StateGraph uses a shared workflow state to pass the lead record, engagement events, and workflow context between nodes.
 
-The execution trace records the sequence in which nodes execute. Each entry contains a node name and a status, such as `completed`, `skipped`, or `failed`.
+The execution trace records node names and statuses, along with router selections. Router entries include the selected `route` and triggering `condition`. The audit service copies the complete trace into the audit record so that the workflow path can be inspected alongside the recommendation and agent outputs.
 
-This structure keeps workflow state organized, supports execution inspection, and makes individual workflow runs easier to validate.
+This structure supports execution inspection, route validation, and audit traceability. Audit storage remains process-local in the current MVP.
 
 ## 5. Decision and Scoring Layer
 
@@ -176,8 +204,11 @@ The Audit Service records information about workflow executions, including:
 - Triggered business rules.
 - Final recommendation.
 - Errors, where applicable.
+- Complete execution trace, including selected routes, triggering conditions, and node statuses.
 
-Audit records are stored in process-local memory in the current MVP. Persistent audit storage is outside the current implementation scope.
+The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended.
+
+Audit records are stored in process-local memory in the current MVP. The execution trace is preserved in each audit record, but records are not durable across backend restarts. Persistent audit storage is outside the current implementation scope.
 
 ## 8. API and Frontend Integration
 
@@ -279,7 +310,7 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - Python 3.11 for backend development.
 - FastAPI for backend API services.
 - Pydantic for structured data validation.
-- LangGraph for deterministic linear workflow orchestration using `StateGraph`.
+- LangGraph for deterministic conditional workflow orchestration using StateGraph.
 - React and TypeScript for the user interface.
 - Deterministic scoring and decision rules.
 - Seeded sample data for reproducible demonstrations.
@@ -287,13 +318,15 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - Docker and Docker Compose for containerized local validation.
 - Render for cloud deployment.
 
-### Current Phase 2.1 Scope
+### Current Phase 2.2 Scope
 
-The current implementation uses LangGraph to orchestrate the existing five-agent workflow through a fixed sequence of nodes.
+The current implementation uses LangGraph conditional routing to orchestrate the existing five-agent workflow through deterministic business paths.
+
+The intake router selects the appropriate path based on mandatory-data validation. The priority router selects an outcome path based on deterministic business rules and triggered priority conditions.
 
 The following capabilities remain outside the current scope:
 
-- Conditional workflow routing.
+- Dynamic agent selection beyond the defined deterministic workflow routes.
 - LLM-based decision-making.
 - Retrieval-Augmented Generation (RAG).
 - Vector databases.
@@ -301,17 +334,15 @@ The following capabilities remain outside the current scope:
 - Live CRM integration.
 - Automatic customer communication.
 
-LangGraph manages workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
+LangGraph manages conditional workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
 
 ## 12. Architecture Objective
 
-The architecture demonstrates how specialized deterministic agents collaborate through a shared workflow context to produce explainable, auditable, and reproducible sales operations recommendations.
+LangGraph provides explicit conditional workflow orchestration through a StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
 
-LangGraph provides explicit workflow orchestration through a linear StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
+The architecture preserves established business outcomes while making workflow execution, selected routes, triggering conditions, and audit trace information observable.
 
-The architecture preserves the established business outcomes while making workflow execution order and node status observable through execution tracing.
-
-## 13. Phase 2.1 — LangGraph Linear Orchestration
+## 13. Historical Implementation — Phase 2.1 Linear Orchestration
 
 ### 13.1 Implementation
 

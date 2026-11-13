@@ -59,7 +59,29 @@ def test_seed_scenario_workflow(
     assert len(context.agent_outputs) == 5
     assert context.explanation is not None
     assert context.audit_reference is not None
-    assert AuditService.get(context.audit_reference) is not None
+    audit_record = AuditService.get(context.audit_reference)
+    assert audit_record is not None
+    assert audit_record.execution_trace == context.execution_trace
+
+    assert any(
+        item["node"] == "intake_router"
+        and item.get("route") == "recency"
+        and item.get("condition") == "INTAKE_VALID"
+        for item in audit_record.execution_trace
+    )
+
+    assert any(
+        item["node"] == "priority_router"
+        and item.get("route") == expected_route
+        and item.get("condition") == expected_condition
+        for item in audit_record.execution_trace
+    )
+
+    assert audit_record.execution_trace[-1] == {
+        "node": "explanation_audit",
+        "status": "completed",
+    }
+
     assert context.errors == []
 
     actual_nodes = [

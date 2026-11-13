@@ -32,6 +32,9 @@ class AuditService:
             triggered_rules=triggered_rules,
             final_recommendation=recommendation.copy(),
             errors=list(context.errors),
+            execution_trace=[
+                item.copy() for item in context.execution_trace
+            ],
         )
 
         cls.audit_store[audit_reference] = record

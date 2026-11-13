@@ -5,7 +5,7 @@
 **Domain:** Sales Operations
 **Product:** APEX — Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 2.1 — LangGraph Linear Orchestration
+**Current Phase:** 2.2 — LangGraph Conditional Routing
 
 ## 1. Overview
 
@@ -13,7 +13,7 @@ APEX is a deterministic, multi-agent application that helps sales teams prioriti
 
 The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
 
-The existing five specialized agents are orchestrated through a LangGraph linear StateGraph workflow. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
+The existing five specialized agents are orchestrated through a LangGraph StateGraph with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -48,25 +48,39 @@ The workflow consists of five specialized agents:
 4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
 5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
 
-### LangGraph Orchestration — Phase 2.1
+### LangGraph Orchestration — Phase 2.2
 
-The agents are orchestrated through a LangGraph `StateGraph` using a fixed linear sequence of seven workflow nodes:
+The five specialized agents are orchestrated through a LangGraph `StateGraph` using deterministic conditional routing. The graph uses shared workflow state and selects different execution paths based on mandatory-data validation and the deterministic priority decision.
 
-1. `build_context`
-2. `lead_intake`
-3. `recency`
-4. `engagement`
-5. `fit_sla`
-6. `priority_decision`
-7. `explanation_audit`
+The workflow includes these core processing nodes:
 
-A run-scoped shared workflow context carries lead data, agent outputs, recommendations, explanations, and audit information between nodes.
+1. `build_context` — initializes the shared workflow context.
+2. `lead_intake` — validates and normalizes mandatory lead information.
+3. `recency` — evaluates lead age and last-contact recency.
+4. `engagement` — scores approved business engagement events.
+5. `fit_sla` — evaluates declared business need and pending follow-up commitments.
+6. `priority_decision` — calculates the deterministic recommendation.
+7. `explanation_audit` — generates the explanation and audit information for every outcome path.
 
-Each node records its name and execution status in the workflow execution trace.
+**Conditional routing after Lead Intake:**
 
-For valid leads, all seven nodes execute in sequence. For invalid leads, the four downstream analytical agent nodes are skipped, while explanation and audit generation still take place.
+- Valid mandatory data → continue to `recency` and the analytical agents.
+- Missing mandatory data → `request_data` route, producing `REQUEST_DATA`.
+- Intake execution failure → `workflow_error` route.
 
-LangGraph manages orchestration and shared state. It does not replace the existing deterministic business rules or make independent business decisions.
+**Conditional routing after Priority Decision:**
+
+- `OVERDUE_FOLLOW_UP` → `overdue_follow_up` route.
+- `HIGH_PRIORITY_SCORE` → `high_priority` route.
+- `MODERATE_PRIORITY_SCORE` → `follow_up_soon` route.
+- `LOW_PRIORITY_SCORE` → `nurture` route.
+- Agent execution failure or an unidentified priority route → `workflow_error` route.
+
+Each router records its selected route and triggering condition in the execution trace. The selected outcome node then leads to the shared `explanation_audit` node, ensuring that explanations and audit information are generated across the different paths.
+
+The audit record preserves a copy of the complete execution trace, including node execution statuses, selected routes, routing conditions, and the final `explanation_audit` completion entry.
+
+LangGraph manages conditional orchestration and shared state. All validation, scoring, recommendation selection, and business rules remain deterministic; routing does not delegate business decisions to an LLM.
 
 ## 5. Deterministic Decision Logic
 
@@ -103,7 +117,7 @@ These are illustrative sample records, not live customer data.
 - Python 3.11
 - FastAPI
 - Pydantic
-- LangGraph (`StateGraph` linear orchestration)
+- LangGraph (`StateGraph` conditional routing)
 - Pytest
 
 **Frontend**
@@ -155,7 +169,7 @@ AA007-Lead-Follow-up-Prioritization-Intelligence/
 The backend workflow modules are:
 
 - `workflow_service.py` — invokes the compiled LangGraph workflow.
-- `workflow_graph.py` — defines the seven-node linear StateGraph.
+- `workflow_graph.py` — defines the conditional-routing StateGraph and its outcome paths.
 - `workflow_state.py` — defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
@@ -280,7 +294,7 @@ The public backend health endpoint returned:
 **Operational limitations:**
 
 - Render free services may spin down after inactivity, resulting in a delay during the first request.
-- Audit records remain in process-local memory. They are not durable and may be lost when the backend restarts.
+- Audit records, including their complete execution traces, remain in process-local memory. They are not durable and may be lost when the backend restarts.
 - No persistent database or external audit storage has been configured.
 - No application secrets are required for the current deployment.
 
@@ -357,24 +371,24 @@ Backend automated tests were also run locally:
 
 `python -m pytest -q`
 
-**Result:** 9 passed, 1 non-blocking deprecation warning.
+**Result:** 10 passed.
 
 **Audit limitation:** Audit records are stored in process memory and are not persistent across backend container restarts.
 
 ## 12. Scope and Limitations
 
-### Current Phase 2.1 Capabilities
+### Current Phase 2.2 Capabilities
 
 - Uses seeded sample data rather than a live CRM integration.
 - Uses deterministic business rules for lead prioritization.
-- Uses LangGraph for fixed linear workflow orchestration.
-- Records workflow node execution order and status through execution tracing.
+- Uses LangGraph conditional routing based on mandatory-data validation and deterministic priority rules.
+- Records workflow node execution, selected routes, and triggering conditions through execution tracing and preserves the complete trace in each audit record.
 - Preserves the existing five specialized agents and their business logic.
 - Does not automatically send messages or contact leads.
 
 ### Out of Scope
 
-- Conditional workflow routing and dynamic agent selection.
+- Dynamic agent selection beyond the defined deterministic workflow routes.
 - LLM-based business decisions.
 - Retrieval-Augmented Generation (RAG).
 - Vector databases.
@@ -393,8 +407,8 @@ Backend automated tests were also run locally:
 
 The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence.
 
-The application combines five specialized deterministic agents, shared workflow context, LangGraph linear orchestration, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
+The application combines five specialized deterministic agents, shared workflow context, LangGraph conditional routing, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
 
-Phase 2.1 evolves the existing workflow orchestration without changing established business rules, recommendations, or frontend and API integration.
+Phase 2.2 extends the existing workflow with deterministic conditional routing while preserving established business rules, recommendations, and frontend and API integration.
 
 The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.

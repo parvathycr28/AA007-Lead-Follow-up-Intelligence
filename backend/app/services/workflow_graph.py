@@ -241,9 +241,8 @@ def explanation_audit_node(state: WorkflowState) -> dict:
     context = state["context"]
 
     ExplanationService.build(context)
-    AuditService.record(context)
-
     add_trace(context, "explanation_audit", "completed")
+    AuditService.record(context)
 
     return {"context": context}
 
