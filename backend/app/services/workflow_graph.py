@@ -6,6 +6,7 @@ from app.services.workflow_state import WorkflowState
 
 from app.services.context_builder import ContextBuilder
 from app.services.explanation_service import ExplanationService
+from app.services.gemini_explainer import GeminiExplainer
 from app.services.audit_service import AuditService
 
 from app.agents.lead_intake_agent import LeadIntakeAgent
@@ -237,15 +238,39 @@ def workflow_error_node(state: WorkflowState) -> dict:
     return route_node(state, "workflow_error")
 
 
-def explanation_audit_node(state: WorkflowState) -> dict:
+def build_explanation_node(state: WorkflowState) -> dict:
     context = state["context"]
 
     ExplanationService.build(context)
+    add_trace(context, "build_explanation", "completed")
+
+    return {"context": context}
+
+
+def gemini_explanation_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
+    result = GeminiExplainer.enhance(context)
+
+    context.explanation["summary"] = result["summary"]
+
+    context.execution_trace.append({
+        "node": "gemini_explanation",
+        "status": result["status"],
+        "provider": result["provider"],
+        "model": result["model"],
+        "reason": result["reason"],
+    })
+
+    return {"context": context}
+
+def explanation_audit_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
     add_trace(context, "explanation_audit", "completed")
     AuditService.record(context)
 
     return {"context": context}
-
 
 def build_workflow_graph():
     graph = StateGraph(WorkflowState)
@@ -265,6 +290,8 @@ def build_workflow_graph():
     graph.add_node("nurture", nurture_node)
     graph.add_node("workflow_error", workflow_error_node)
 
+    graph.add_node("build_explanation", build_explanation_node)
+    graph.add_node("gemini_explanation", gemini_explanation_node)
     graph.add_node("explanation_audit", explanation_audit_node)
 
     graph.add_edge(START, "build_context")
@@ -296,12 +323,15 @@ def build_workflow_graph():
         },
     )
 
-    graph.add_edge("request_data", "explanation_audit")
-    graph.add_edge("overdue_follow_up", "explanation_audit")
-    graph.add_edge("high_priority", "explanation_audit")
-    graph.add_edge("follow_up_soon", "explanation_audit")
-    graph.add_edge("nurture", "explanation_audit")
-    graph.add_edge("workflow_error", "explanation_audit")
+    graph.add_edge("request_data", "build_explanation")
+    graph.add_edge("overdue_follow_up", "build_explanation")
+    graph.add_edge("high_priority", "build_explanation")
+    graph.add_edge("follow_up_soon", "build_explanation")
+    graph.add_edge("nurture", "build_explanation")
+    graph.add_edge("workflow_error", "build_explanation")
+
+    graph.add_edge("build_explanation", "gemini_explanation")
+    graph.add_edge("gemini_explanation", "explanation_audit")
 
     graph.add_edge("explanation_audit", END)
 

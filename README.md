@@ -1,11 +1,11 @@
-# APEX — Lead Follow-up Prioritization Intelligence
+# APEX â€” Lead Follow-up Prioritization Intelligence
 
 **Case ID:** AA007
 **Assignment:** Lead Follow-up Prioritization Intelligence
 **Domain:** Sales Operations
-**Product:** APEX — Lead Intelligence Platform
+**Product:** APEX â€” Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 2.2 — LangGraph Conditional Routing
+**Current Phase:** Post 2.3 â€” Controlled LLM Enhancement
 
 ## 1. Overview
 
@@ -14,6 +14,8 @@ APEX is a deterministic, multi-agent application that helps sales teams prioriti
 The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
 
 The existing five specialized agents are orchestrated through a LangGraph StateGraph with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
+
+An optional, controlled Google Gemini service enhances the readability of the deterministic explanation. Gemini receives structured decision evidence, not the lead identifier, and cannot change the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the application retains the original deterministic explanation.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -42,45 +44,90 @@ Each completed workflow provides a priority score, score breakdown, triggered bu
 
 The workflow consists of five specialized agents:
 
-1. **Lead Intake Agent** — validates and normalizes lead information.
-2. **Recency Agent** — evaluates lead age and last-contact recency.
-3. **Engagement Agent** — scores approved business engagement events.
-4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
-5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
+1. **Lead Intake Agent** â€” validates and normalizes lead information.
+2. **Recency Agent** â€” evaluates lead age and last-contact recency.
+3. **Engagement Agent** â€” scores approved business engagement events.
+4. **Fit & SLA Agent** â€” evaluates declared business need and pending follow-up commitments.
+5. **Lead Priority Decision Agent** â€” combines agent outputs and applies deterministic decision rules.
 
-### LangGraph Orchestration — Phase 2.2
+### LangGraph Orchestration â€” Phase 2.2
 
 The five specialized agents are orchestrated through a LangGraph `StateGraph` using deterministic conditional routing. The graph uses shared workflow state and selects different execution paths based on mandatory-data validation and the deterministic priority decision.
 
 The workflow includes these core processing nodes:
 
-1. `build_context` — initializes the shared workflow context.
-2. `lead_intake` — validates and normalizes mandatory lead information.
-3. `recency` — evaluates lead age and last-contact recency.
-4. `engagement` — scores approved business engagement events.
-5. `fit_sla` — evaluates declared business need and pending follow-up commitments.
-6. `priority_decision` — calculates the deterministic recommendation.
-7. `explanation_audit` — generates the explanation and audit information for every outcome path.
+1. `build_context` â€” initializes the shared workflow context.
+2. `lead_intake` â€” validates and normalizes mandatory lead information.
+3. `recency` â€” evaluates lead age and last-contact recency.
+4. `engagement` â€” scores approved business engagement events.
+5. `fit_sla` â€” evaluates declared business need and pending follow-up commitments.
+6. `priority_decision` â€” calculates the deterministic recommendation.
+7. `explanation_audit` â€” generates the explanation and audit information for every outcome path.
 
 **Conditional routing after Lead Intake:**
 
-- Valid mandatory data → continue to `recency` and the analytical agents.
-- Missing mandatory data → `request_data` route, producing `REQUEST_DATA`.
-- Intake execution failure → `workflow_error` route.
+- Valid mandatory data â†’ continue to `recency` and the analytical agents.
+- Missing mandatory data â†’ `request_data` route, producing `REQUEST_DATA`.
+- Intake execution failure â†’ `workflow_error` route.
 
 **Conditional routing after Priority Decision:**
 
-- `OVERDUE_FOLLOW_UP` → `overdue_follow_up` route.
-- `HIGH_PRIORITY_SCORE` → `high_priority` route.
-- `MODERATE_PRIORITY_SCORE` → `follow_up_soon` route.
-- `LOW_PRIORITY_SCORE` → `nurture` route.
-- Agent execution failure or an unidentified priority route → `workflow_error` route.
+- `OVERDUE_FOLLOW_UP` â†’ `overdue_follow_up` route.
+- `HIGH_PRIORITY_SCORE` â†’ `high_priority` route.
+- `MODERATE_PRIORITY_SCORE` â†’ `follow_up_soon` route.
+- `LOW_PRIORITY_SCORE` â†’ `nurture` route.
+- Agent execution failure or an unidentified priority route â†’ `workflow_error` route.
 
 Each router records its selected route and triggering condition in the execution trace. The selected outcome node then leads to the shared `explanation_audit` node, ensuring that explanations and audit information are generated across the different paths.
 
 The audit record preserves a copy of the complete execution trace, including node execution statuses, selected routes, routing conditions, and the final `explanation_audit` completion entry.
 
 LangGraph manages conditional orchestration and shared state. All validation, scoring, recommendation selection, and business rules remain deterministic; routing does not delegate business decisions to an LLM.
+
+### Controlled LLM Enhancement â€” Post 2.3
+
+The workflow includes an optional Google Gemini enhancement after the deterministic explanation is generated and before the final audit is recorded.
+
+**Processing sequence:**
+
+1. The deterministic agents validate lead information and calculate the recommendation.
+2. LangGraph selects the appropriate conditional execution path.
+3. The deterministic priority decision establishes the recommendation and score.
+4. `build_explanation` generates the original evidence-based explanation.
+5. `gemini_explanation` optionally rewrites the explanation into a concise, readable summary.
+6. The response is validated before it is accepted.
+7. `explanation_audit` records the complete execution trace.
+
+**LLM boundaries and safeguards:**
+
+- Gemini only improves the readability of an existing explanation.
+- The deterministic recommendation and priority score remain authoritative.
+- Only structured decision evidence is sent to Gemini; the lead identifier is excluded.
+- The response must preserve the exact recommendation action and priority score.
+- Responses exceeding the configured length limit or containing multiple lines are rejected.
+- Provider errors, timeouts, missing configuration, and invalid responses trigger deterministic fallback.
+- No autonomous customer contact or LLM-based business decisions are performed.
+
+**Configuration:**
+
+The optional service is configured through environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | LLM provider (`gemini`). |
+| `GEMINI_API_KEY` | Google Gemini API key. |
+| `GEMINI_MODEL` | Configured Gemini model. |
+| `LLM_TIMEOUT` | Provider request timeout in seconds. |
+
+The API key is stored locally in `backend/.env` and must never be committed. `backend/.env.example` contains placeholder configuration.
+
+**Execution trace and audit:**
+
+The `gemini_explanation` trace entry records the provider, model, execution status, and reason. The audit record preserves this entry along with the rest of the workflow trace.
+
+If Gemini is unavailable or returns an invalid response, the original deterministic explanation is retained.
+
+The LLM does not control validation, scoring, routing, recommendation selection, or business rules.
 
 ## 5. Deterministic Decision Logic
 
@@ -93,11 +140,11 @@ The current MVP uses provisional scoring assumptions:
 
 Current decision precedence:
 
-1. Missing or invalid mandatory information → `REQUEST_DATA`.
-2. Overdue committed follow-up → `FOLLOW_UP_NOW`.
-3. Score of 70 or above → `FOLLOW_UP_NOW`.
-4. Score of 40 or above → `FOLLOW_UP_SOON`.
-5. Otherwise → `NURTURE`.
+1. Missing or invalid mandatory information â†’ `REQUEST_DATA`.
+2. Overdue committed follow-up â†’ `FOLLOW_UP_NOW`.
+3. Score of 70 or above â†’ `FOLLOW_UP_NOW`.
+4. Score of 40 or above â†’ `FOLLOW_UP_SOON`.
+5. Otherwise â†’ `NURTURE`.
 
 These weights, thresholds, and rules are provisional implementation assumptions for the MVP, not externally validated sales benchmarks.
 
@@ -136,41 +183,41 @@ These are illustrative sample records, not live customer data.
 
 ```text
 AA007-Lead-Follow-up-Prioritization-Intelligence/
-├── backend/
-│   ├── app/
-│   │   ├── agents/
-│   │   ├── api/
-│   │   ├── data/
-│   │   ├── models/
-│   │   ├── rules/
-│   │   └── services/
-│   │       ├── workflow_service.py
-│   │       ├── workflow_graph.py
-│   │       └── workflow_state.py
-│   ├── tests/
-│   ├── .dockerignore
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   ├── .dockerignore
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/
-│   └── architecture.md
-├── docker-compose.yml
-├── .gitignore
-└── README.md
+â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ app/
+â”‚   â”‚   â”œâ”€â”€ agents/
+â”‚   â”‚   â”œâ”€â”€ api/
+â”‚   â”‚   â”œâ”€â”€ data/
+â”‚   â”‚   â”œâ”€â”€ models/
+â”‚   â”‚   â”œâ”€â”€ rules/
+â”‚   â”‚   â””â”€â”€ services/
+â”‚   â”‚       â”œâ”€â”€ workflow_service.py
+â”‚   â”‚       â”œâ”€â”€ workflow_graph.py
+â”‚   â”‚       â””â”€â”€ workflow_state.py
+â”‚   â”œâ”€â”€ tests/
+â”‚   â”œâ”€â”€ .dockerignore
+â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â””â”€â”€ requirements.txt
+â”œâ”€â”€ frontend/
+â”‚   â”œâ”€â”€ public/
+â”‚   â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ .dockerignore
+â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â”œâ”€â”€ nginx.conf
+â”‚   â”œâ”€â”€ package.json
+â”‚   â””â”€â”€ vite.config.ts
+â”œâ”€â”€ docs/
+â”‚   â””â”€â”€ architecture.md
+â”œâ”€â”€ docker-compose.yml
+â”œâ”€â”€ .gitignore
+â””â”€â”€ README.md
 ```
 
 The backend workflow modules are:
 
-- `workflow_service.py` — invokes the compiled LangGraph workflow.
-- `workflow_graph.py` — defines the conditional-routing StateGraph and its outcome paths.
-- `workflow_state.py` — defines the shared state passed between graph nodes.
+- `workflow_service.py` â€” invokes the compiled LangGraph workflow.
+- `workflow_graph.py` â€” defines the conditional-routing StateGraph and its outcome paths.
+- `workflow_state.py` â€” defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
 
@@ -343,8 +390,8 @@ Current validation results:
 The application was built and validated using Docker Compose.
 
 **Container status:**
-- `aa007-backend` — running and healthy.
-- `aa007-frontend` — running and healthy.
+- `aa007-backend` â€” running and healthy.
+- `aa007-frontend` â€” running and healthy.
 - Frontend published on host port `8080`.
 
 **Health and API checks:**
@@ -377,13 +424,15 @@ Backend automated tests were also run locally:
 
 ## 12. Scope and Limitations
 
-### Current Phase 2.2 Capabilities
+### Current Post 2.3 Capabilities
 
 - Uses seeded sample data rather than a live CRM integration.
-- Uses deterministic business rules for lead prioritization.
+- Uses five specialized deterministic agents for lead validation, analysis, and prioritization.
 - Uses LangGraph conditional routing based on mandatory-data validation and deterministic priority rules.
-- Records workflow node execution, selected routes, and triggering conditions through execution tracing and preserves the complete trace in each audit record.
-- Preserves the existing five specialized agents and their business logic.
+- Preserves deterministic recommendation selection, scoring, and business rules.
+- Uses Google Gemini as an optional, controlled explanation-enhancement service.
+- Validates LLM output and falls back to the original deterministic explanation on provider errors, timeouts, missing configuration, or invalid responses.
+- Records workflow execution, routing decisions, and Gemini provider/model/status/reason in the execution trace and audit record.
 - Does not automatically send messages or contact leads.
 
 ### Out of Scope
@@ -409,6 +458,6 @@ The objective is to demonstrate a transparent, explainable, and testable multi-a
 
 The application combines five specialized deterministic agents, shared workflow context, LangGraph conditional routing, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
 
-Phase 2.2 extends the existing workflow with deterministic conditional routing while preserving established business rules, recommendations, and frontend and API integration.
+Post 2.3 builds on the deterministic multi-agent and LangGraph conditional-routing workflow by introducing a controlled, fallback-safe Gemini explanation enhancement. Deterministic business decisions remain authoritative, while the existing frontend and API integration are preserved.
 
 The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.

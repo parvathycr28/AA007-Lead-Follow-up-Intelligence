@@ -60,6 +60,15 @@ type AuditRecord = {
   agent_outputs: Record<string, AgentOutput>
   triggered_rules: string[]
   final_recommendation: Recommendation
+  execution_trace: Array<{
+    node: string
+    status: string
+    provider?: string
+    model?: string
+    reason?: string
+    route?: string
+    condition?: string
+  }>
   errors: string[]
 }
 
@@ -671,6 +680,14 @@ function App() {
 
               {result.audit_record && (
                 <>
+                  <h4>Execution Trace & LLM Metadata</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(
+                      result.audit_record.execution_trace,
+                      null,
+    2
+                    )}
+                  </pre>
                   <h4>Recorded Recommendation</h4>
                   <pre className="json-output">
                     {JSON.stringify(result.audit_record.final_recommendation, null, 2)}

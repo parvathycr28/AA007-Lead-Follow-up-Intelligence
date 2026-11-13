@@ -70,6 +70,8 @@ backend/
       audit_service.py
       context_builder.py
       explanation_service.py
+      gemini_explainer.py
+      llm_config.py
       workflow_graph.py
       workflow_service.py
       workflow_state.py
@@ -77,8 +79,10 @@ backend/
     main.py
   tests/
     __init__.py
+    test_gemini_explainer.py
     test_workflow.py
   .dockerignore
+  .env.example
   .gitignore
   Dockerfile
   requirements.txt
@@ -118,6 +122,484 @@ README.md
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="backend/app/services/gemini_explainer.py">
+import json
+
+from google import genai
+from google.genai import types
+
+from app.models.workflow import WorkflowContext
+from app.services.llm_config import LLMConfig
+
+
+class GeminiExplainer:
+
+    MAX_SUMMARY_LENGTH = 500
+
+    @staticmethod
+    def enhance(context: WorkflowContext) -> dict:
+        explanation = context.explanation or {}
+        recommendation = context.final_recommendation or {}
+
+        fallback_summary = explanation.get("summary", "")
+
+        fallback_result = {
+            "summary": fallback_summary,
+            "status": "fallback",
+            "provider": "gemini",
+            "model": LLMConfig.MODEL,
+            "reason": "provider_unavailable",
+        }
+
+        if not LLMConfig.is_configured():
+            fallback_result["reason"] = "not_configured"
+            return fallback_result
+
+        action = recommendation.get("action", "NOT_AVAILABLE")
+        score = recommendation.get("priority_score", 0)
+
+        # Do not send the lead identifier to the external LLM.
+        evidence = {
+            "recommendation": action,
+            "priority_score": score,
+            "score_breakdown": explanation.get(
+                "score_breakdown", {}
+            ),
+            "triggered_rules": explanation.get(
+                "triggered_rules", []
+            ),
+            "reasons": explanation.get("reasons", []),
+            "executed_agents": explanation.get(
+                "executed_agents", []
+            ),
+        }
+
+        prompt = f"""
+You are an explanation assistant for a deterministic sales
+lead prioritization system.
+
+Rewrite the existing decision explanation into a clear,
+professional summary of one or two sentences.
+
+Use ONLY the supplied structured evidence.
+
+Mandatory requirements:
+- Preserve the exact recommendation action.
+- Preserve the exact priority score out of 100.
+- Do not invent facts or add unsupported reasons.
+- Do not change, reinterpret, or question the decision.
+- Do not make predictions or promises.
+- Do not make claims about health, legal compliance,
+  or customer behavior beyond the supplied evidence.
+- Do not recommend contacting a customer autonomously.
+- Return only the rewritten summary, without headings.
+
+Structured evidence:
+{json.dumps(evidence, ensure_ascii=False)}
+"""
+
+        try:
+            client = genai.Client(
+                api_key=LLMConfig.API_KEY,
+                http_options=types.HttpOptions(
+                    timeout=int(LLMConfig.TIMEOUT * 1000)
+                ),
+            )
+
+            response = client.models.generate_content(
+                model=LLMConfig.MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=120,
+                ),
+            )
+
+            summary = (response.text or "").strip()
+
+            if not GeminiExplainer._is_valid_summary(
+                summary,
+                action,
+                score,
+            ):
+                fallback_result["reason"] = "invalid_response"
+                return fallback_result
+
+            return {
+                "summary": summary,
+                "status": "completed",
+                "provider": "gemini",
+                "model": LLMConfig.MODEL,
+                "reason": "none",
+            }
+
+        except Exception as exc:
+            fallback_result["reason"] = (
+                "timeout"
+                if "timeout" in type(exc).__name__.lower()
+                else "provider_error"
+            )
+            return fallback_result
+
+    @staticmethod
+    def _is_valid_summary(
+        summary: str,
+        action: str,
+        score,
+    ) -> bool:
+        if not summary:
+            return False
+
+        if len(summary) > GeminiExplainer.MAX_SUMMARY_LENGTH:
+            return False
+
+        if "\n" in summary or "\r" in summary:
+            return False
+
+        required_values = [
+            action,
+            str(score),
+        ]
+
+        normalized_summary = summary.casefold()
+
+        return all(
+            value.casefold() in normalized_summary
+            for value in required_values
+        )
+</file>
+
+<file path="backend/app/services/llm_config.py">
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+ENV_FILE = BACKEND_DIR / ".env"
+
+load_dotenv(ENV_FILE)
+
+
+class LLMConfig:
+    PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+
+    MODEL = os.getenv(
+        "GEMINI_MODEL",
+        "gemini-3.5-flash-lite",
+    ).strip()
+
+    API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+    TIMEOUT = float(os.getenv("LLM_TIMEOUT", "15"))
+
+    @classmethod
+    def is_configured(cls) -> bool:
+        return (
+            cls.PROVIDER == "gemini"
+            and bool(cls.API_KEY)
+            and bool(cls.MODEL)
+        )
+</file>
+
+<file path="backend/tests/test_gemini_explainer.py">
+from datetime import datetime, timezone
+
+import pytest
+
+from app.models.lead import LeadRecord
+from app.services.context_builder import ContextBuilder
+from app.services.explanation_service import ExplanationService
+from app.services.gemini_explainer import GeminiExplainer
+
+
+@pytest.fixture
+def workflow_context():
+    lead = LeadRecord(
+        lead_id="LEAD-GEMINI-001",
+        source="Website",
+        created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+        last_contact_at=datetime(2026, 11, 12, tzinfo=timezone.utc),
+        declared_need="Enterprise software",
+        stage="Qualified",
+        contact_available=True,
+        pending_follow_up=True,
+    )
+
+    context = ContextBuilder.build(lead)
+
+    context.final_recommendation = {
+        "action": "FOLLOW_UP_NOW",
+        "priority_score": 95,
+        "triggered_rules": ["OVERDUE_FOLLOW_UP"],
+        "reasons": ["Follow-up is overdue"],
+    }
+
+    ExplanationService.build(context)
+
+    return context
+from types import SimpleNamespace
+
+
+def test_gemini_success_returns_valid_summary(
+    workflow_context,
+    monkeypatch,
+):
+    expected_summary = (
+        "LEAD-GEMINI-001 receives FOLLOW_UP_NOW "
+        "with a priority score of 95/100."
+    )
+
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return SimpleNamespace(text=expected_summary)
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "completed"
+    assert result["provider"] == "gemini"
+    assert result["summary"] == expected_summary
+    assert result["reason"] == "none"
+def test_gemini_provider_error_uses_deterministic_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            raise RuntimeError("Simulated provider failure")
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "provider_error"
+    assert result["summary"] == original_summary
+    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert workflow_context.final_recommendation["priority_score"] == 95
+def test_gemini_timeout_uses_deterministic_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            raise TimeoutError("Simulated Gemini timeout")
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "timeout"
+    assert result["summary"] == original_summary
+    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert workflow_context.final_recommendation["priority_score"] == 95
+def test_gemini_invalid_response_uses_deterministic_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return SimpleNamespace(
+                text="This lead may be worth reviewing."
+            )
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "invalid_response"
+    assert result["summary"] == original_summary
+    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert workflow_context.final_recommendation["priority_score"] == 95
+def test_gemini_missing_configuration_uses_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    def unexpected_client_call(**kwargs):
+        raise AssertionError(
+            "Gemini client should not be created when unconfigured"
+        )
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        unexpected_client_call,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: False),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "not_configured"
+    assert result["summary"] == original_summary
+def test_gemini_prompt_excludes_lead_identifier(
+    workflow_context,
+    monkeypatch,
+):
+    captured_prompt = {}
+
+    expected_summary = (
+        "FOLLOW_UP_NOW with a priority score of 95/100."
+    )
+
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            captured_prompt["contents"] = kwargs["contents"]
+            return SimpleNamespace(text=expected_summary)
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "completed"
+    assert "FOLLOW_UP_NOW" in captured_prompt["contents"]
+    assert "95" in captured_prompt["contents"]
+    assert "LEAD-GEMINI-001" not in captured_prompt["contents"]
+def test_gemini_preserves_request_data_recommendation(
+    monkeypatch,
+):
+    lead = LeadRecord(
+        lead_id="LEAD-MISSING-CONTACT",
+        source="Website",
+        created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+        stage="New",
+        contact_available=False,
+    )
+
+    context = ContextBuilder.build(lead)
+
+    context.final_recommendation = {
+        "action": "REQUEST_DATA",
+        "priority_score": 0,
+        "triggered_rules": [],
+        "reasons": ["Mandatory contact information is missing"],
+    }
+
+    ExplanationService.build(context)
+
+    expected_summary = (
+        "REQUEST_DATA with a priority score of 0/100 "
+        "because mandatory contact information is missing."
+    )
+
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return SimpleNamespace(text=expected_summary)
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    result = GeminiExplainer.enhance(context)
+
+    assert result["status"] == "completed"
+    assert result["summary"] == expected_summary
+    assert context.final_recommendation["action"] == "REQUEST_DATA"
+    assert context.final_recommendation["priority_score"] == 0
+</file>
+
+<file path="backend/.env.example">
+# Google Gemini configuration
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+# LLM service configuration
+LLM_PROVIDER=gemini
+LLM_TIMEOUT=15
+</file>
 
 <file path="backend/app/agents/__init__.py">
 
@@ -1534,6 +2016,8 @@ pydantic
 pytest
 httpx
 langgraph==1.2.20
+google-genai
+python-dotenv
 </file>
 
 <file path="frontend/src/App.css">
@@ -2403,6 +2887,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: aa007-backend
+    env_file:
+      - ./backend/.env
     expose:
       - "8002"
     healthcheck:
@@ -2444,6 +2930,7 @@ from app.services.workflow_state import WorkflowState
 
 from app.services.context_builder import ContextBuilder
 from app.services.explanation_service import ExplanationService
+from app.services.gemini_explainer import GeminiExplainer
 from app.services.audit_service import AuditService
 
 from app.agents.lead_intake_agent import LeadIntakeAgent
@@ -2675,15 +3162,39 @@ def workflow_error_node(state: WorkflowState) -> dict:
     return route_node(state, "workflow_error")
 
 
-def explanation_audit_node(state: WorkflowState) -> dict:
+def build_explanation_node(state: WorkflowState) -> dict:
     context = state["context"]
 
     ExplanationService.build(context)
+    add_trace(context, "build_explanation", "completed")
+
+    return {"context": context}
+
+
+def gemini_explanation_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
+    result = GeminiExplainer.enhance(context)
+
+    context.explanation["summary"] = result["summary"]
+
+    context.execution_trace.append({
+        "node": "gemini_explanation",
+        "status": result["status"],
+        "provider": result["provider"],
+        "model": result["model"],
+        "reason": result["reason"],
+    })
+
+    return {"context": context}
+
+def explanation_audit_node(state: WorkflowState) -> dict:
+    context = state["context"]
+
     add_trace(context, "explanation_audit", "completed")
     AuditService.record(context)
 
     return {"context": context}
-
 
 def build_workflow_graph():
     graph = StateGraph(WorkflowState)
@@ -2703,6 +3214,8 @@ def build_workflow_graph():
     graph.add_node("nurture", nurture_node)
     graph.add_node("workflow_error", workflow_error_node)
 
+    graph.add_node("build_explanation", build_explanation_node)
+    graph.add_node("gemini_explanation", gemini_explanation_node)
     graph.add_node("explanation_audit", explanation_audit_node)
 
     graph.add_edge(START, "build_context")
@@ -2734,12 +3247,15 @@ def build_workflow_graph():
         },
     )
 
-    graph.add_edge("request_data", "explanation_audit")
-    graph.add_edge("overdue_follow_up", "explanation_audit")
-    graph.add_edge("high_priority", "explanation_audit")
-    graph.add_edge("follow_up_soon", "explanation_audit")
-    graph.add_edge("nurture", "explanation_audit")
-    graph.add_edge("workflow_error", "explanation_audit")
+    graph.add_edge("request_data", "build_explanation")
+    graph.add_edge("overdue_follow_up", "build_explanation")
+    graph.add_edge("high_priority", "build_explanation")
+    graph.add_edge("follow_up_soon", "build_explanation")
+    graph.add_edge("nurture", "build_explanation")
+    graph.add_edge("workflow_error", "build_explanation")
+
+    graph.add_edge("build_explanation", "gemini_explanation")
+    graph.add_edge("gemini_explanation", "explanation_audit")
 
     graph.add_edge("explanation_audit", END)
 
@@ -2805,10 +3321,26 @@ from app.data.seed_leads import get_seed_scenarios
 from app.services.workflow_service import WorkflowService
 from app.services.audit_service import AuditService
 from app.models.lead import LeadRecord
-
+from app.services.gemini_explainer import GeminiExplainer
+from app.services.llm_config import LLMConfig
 
 client = TestClient(app)
+@pytest.fixture(autouse=True)
+def prevent_live_gemini_calls(monkeypatch):
+    def mock_enhance(context):
+        return {
+            "summary": context.explanation["summary"],
+            "status": "fallback",
+            "provider": "gemini",
+            "model": LLMConfig.MODEL,
+            "reason": "test_fallback",
+        }
 
+    monkeypatch.setattr(
+        GeminiExplainer,
+        "enhance",
+        staticmethod(mock_enhance),
+    )
 
 @pytest.mark.parametrize(
     "scenario_name, expected_action, expected_score, expected_route, expected_condition",
@@ -2860,7 +3392,16 @@ def test_seed_scenario_workflow(
     audit_record = AuditService.get(context.audit_reference)
     assert audit_record is not None
     assert audit_record.execution_trace == context.execution_trace
+    gemini_audit_entry = next(
+        item
+        for item in audit_record.execution_trace
+        if item["node"] == "gemini_explanation"
+    )
 
+    assert gemini_audit_entry["status"] == "fallback"
+    assert gemini_audit_entry["provider"] == "gemini"
+    assert gemini_audit_entry["model"] == LLMConfig.MODEL
+    assert gemini_audit_entry["reason"] == "test_fallback"
     assert any(
         item["node"] == "intake_router"
         and item.get("route") == "recency"
@@ -2897,9 +3438,10 @@ def test_seed_scenario_workflow(
         "priority_decision",
         "priority_router",
         expected_route,
+        "build_explanation",
+        "gemini_explanation",
         "explanation_audit",
     ]
-
     intake_route = next(
         item
         for item in context.execution_trace
@@ -2919,10 +3461,9 @@ def test_seed_scenario_workflow(
     assert priority_route["condition"] == expected_condition
 
     assert all(
-        item["status"] in ("completed", "selected")
+        item["status"] in ("completed", "selected", "fallback")
         for item in context.execution_trace
     )
-
 
 def test_scenario_listing_api():
     response = client.get("/api/leads/scenarios")
@@ -2991,9 +3532,10 @@ def test_missing_contact_returns_request_data():
         ("lead_intake", "completed"),
         ("intake_router", "selected"),
         ("request_data", "completed"),
+        ("build_explanation", "completed"),
+        ("gemini_explanation", "fallback"),
         ("explanation_audit", "completed"),
     ]
-
     intake_route = next(
         item
         for item in actual_trace
@@ -3066,6 +3608,15 @@ def test_high_priority_score_uses_high_priority_route():
     assert context.explanation is not None
     assert context.audit_reference is not None
     assert context.errors == []
+    gemini_trace = next(
+        item
+        for item in context.execution_trace
+        if item["node"] == "gemini_explanation"
+    )
+
+    assert gemini_trace["status"] == "fallback"
+    assert gemini_trace["provider"] == "gemini"
+    assert gemini_trace["reason"] == "test_fallback"
 </file>
 
 <file path="frontend/src/App.tsx">
@@ -3130,6 +3681,15 @@ type AuditRecord = {
   agent_outputs: Record<string, AgentOutput>
   triggered_rules: string[]
   final_recommendation: Recommendation
+  execution_trace: Array<{
+    node: string
+    status: string
+    provider?: string
+    model?: string
+    reason?: string
+    route?: string
+    condition?: string
+  }>
   errors: string[]
 }
 
@@ -3741,6 +4301,14 @@ function App() {
 
               {result.audit_record && (
                 <>
+                  <h4>Execution Trace & LLM Metadata</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(
+                      result.audit_record.execution_trace,
+                      null,
+    2
+                    )}
+                  </pre>
                   <h4>Recorded Recommendation</h4>
                   <pre className="json-output">
                     {JSON.stringify(result.audit_record.final_recommendation, null, 2)}
@@ -3796,7 +4364,7 @@ export default App
 
 **Product:** APEX — Lead Intelligence Platform
 **Case ID:** AA007
-**Architecture Version:** 2.2
+**Architecture Version:** 2.3
 
 ## 1. Architecture Overview
 
@@ -3806,13 +4374,13 @@ A lead record enters through the FastAPI endpoint. The LangGraph StateGraph init
 
 The Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the analytical agents execute.
 
-For valid leads, all five agents execute. Leads with missing mandatory information follow the `request_data` path and skip the four downstream analytical agents. After priority evaluation, the graph selects an outcome path based on the deterministic triggered business rule. Every outcome path converges on explanation and audit generation.
+For valid leads, all five agents execute. Leads with missing mandatory information follow the `request_data` path and skip the four downstream analytical agents. After priority evaluation, the graph selects an outcome path based on the deterministic triggered business rule. Every outcome path converges on explanation generation, optional controlled Gemini enhancement, and audit recording.
 
 LangGraph manages conditional orchestration and shared workflow state. It does not independently make business decisions. The existing agents, deterministic scoring rules, recommendation logic, and business rules retain decision-making authority.
 
 The workflow records node execution statuses and router selections, including the selected route and triggering condition. The complete execution trace is copied into the audit record, including the final explanation and audit completion entry.
 
-The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references.
+The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references. An optional Google Gemini service enhances the readability of the deterministic explanation. It cannot alter the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the original deterministic explanation is retained.
 
 ## 2. High-Level Workflow
 
@@ -3863,6 +4431,12 @@ LangGraph StateGraph
        +-------------+--------------+
                      |
                      v
+             build_explanation
+                     |
+                     v
+            gemini_explanation
+                     |
+                     v
              explanation_audit
                      |
                      v
@@ -3883,7 +4457,9 @@ LangGraph StateGraph
 - **Moderate priority:** The priority router selects `follow_up_soon` when the `MODERATE_PRIORITY_SCORE` rule is triggered.
 - **Low priority:** The priority router selects `nurture` when the `LOW_PRIORITY_SCORE` rule is triggered.
 - **Workflow failure:** The graph selects `workflow_error` when an execution failure occurs or a priority route cannot be identified.
-- **Explanation and audit:** All outcome paths converge on `explanation_audit`, which builds the explanation, appends its completion entry, and records the audit information.
+- **Deterministic explanation:** All outcome paths converge on `build_explanation`, which generates the original evidence-based explanation.
+- **Gemini enhancement:** `gemini_explanation` optionally rewrites the explanation using structured decision evidence. The lead identifier is excluded, and the recommendation and priority score remain unchanged.
+- **Explanation and audit:** `explanation_audit` records the complete execution trace after the Gemini result or deterministic fallback has been applied.
 
 ### Conditional Routing and Execution Trace
 
@@ -3972,9 +4548,11 @@ Missing mandatory information results in `REQUEST_DATA`.
 
 The scoring configuration is an MVP implementation assumption and can be refined using approved business requirements and validated operational data.
 
-## 6. Explanation Service
+## 6. Explanation and Controlled LLM Enhancement
 
-The Explanation Service generates a structured explanation from the workflow context.
+### 6.1 Deterministic Explanation
+
+The Explanation Service generates the original structured explanation from the workflow context.
 
 It communicates:
 
@@ -3984,7 +4562,45 @@ It communicates:
 - Relevant evidence.
 - Known limitations.
 
-The explanation is based on deterministic workflow outputs rather than an external language model.
+This deterministic explanation remains the authoritative fallback.
+
+### 6.2 Gemini Explanation Enhancement
+
+The optional `GeminiExplainer` service improves the readability of the deterministic explanation after the business decision has been completed.
+
+The service receives only structured decision evidence, including:
+
+- Recommendation action.
+- Priority score.
+- Score breakdown.
+- Triggered business rules.
+- Supporting reasons.
+- Executed agents.
+
+The lead identifier is excluded from the external request.
+
+**Validation and safeguards:**
+
+- The response must preserve the exact recommendation action and priority score.
+- The response must be non-empty, single-line, and no longer than 500 characters.
+- Provider errors, timeouts, missing configuration, and invalid responses result in deterministic fallback.
+- The LLM cannot modify validation, scoring, routing, recommendation selection, or business rules.
+- The service does not initiate customer communication or autonomous actions.
+
+The provider, model, status, and execution reason are recorded in the `gemini_explanation` execution-trace entry.
+
+### 6.3 Configuration
+
+The service reads its configuration from environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | Selects the configured provider. |
+| `GEMINI_API_KEY` | Authenticates requests to Google Gemini. |
+| `GEMINI_MODEL` | Specifies the Gemini model. |
+| `LLM_TIMEOUT` | Sets the request timeout in seconds. |
+
+The API key is kept outside source control in `backend/.env`. The example environment file contains placeholders only.
 
 ## 7. Audit Service
 
@@ -3999,8 +4615,9 @@ The Audit Service records information about workflow executions, including:
 - Final recommendation.
 - Errors, where applicable.
 - Complete execution trace, including selected routes, triggering conditions, and node statuses.
+- Gemini enhancement metadata, including provider, model, status, and execution reason, when the enhancement node executes.
 
-The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended.
+The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended. The trace includes the Gemini enhancement status and fallback reason when applicable.
 
 Audit records are stored in process-local memory in the current MVP. The execution trace is preserved in each audit record, but records are not durable across backend restarts. Persistent audit storage is outside the current implementation scope.
 
@@ -4086,9 +4703,20 @@ The frontend Render service requires:
 
 | Variable | Configuration |
 |---|---|
-| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
+| `BACKEND_URL` | Public URL of the backend service. |
 
-No application secrets are required for the current deployment.
+The backend Render service uses the following optional Gemini configuration:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | Set to `gemini`. |
+| `GEMINI_API_KEY` | Secret Google Gemini API key. |
+| `GEMINI_MODEL` | Configured Gemini model. |
+| `LLM_TIMEOUT` | Provider request timeout in seconds. |
+
+The Gemini API key must be configured as a secret environment variable in Render. It must not be committed to source control or included in documentation.
+
+If Gemini is not configured or is unavailable, the workflow retains its deterministic explanation through the fallback mechanism.
 
 ### Cloud Deployment Constraints
 
@@ -4105,6 +4733,8 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - FastAPI for backend API services.
 - Pydantic for structured data validation.
 - LangGraph for deterministic conditional workflow orchestration using StateGraph.
+- Google Gen AI SDK for optional, controlled Gemini explanation enhancement.
+- python-dotenv for loading local environment configuration.
 - React and TypeScript for the user interface.
 - Deterministic scoring and decision rules.
 - Seeded sample data for reproducible demonstrations.
@@ -4112,29 +4742,41 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - Docker and Docker Compose for containerized local validation.
 - Render for cloud deployment.
 
-### Current Phase 2.2 Scope
+### Current Post 2.3 Scope
 
-The current implementation uses LangGraph conditional routing to orchestrate the existing five-agent workflow through deterministic business paths.
+The current implementation combines five specialized deterministic agents, LangGraph conditional routing, and one controlled Google Gemini explanation enhancement.
 
-The intake router selects the appropriate path based on mandatory-data validation. The priority router selects an outcome path based on deterministic business rules and triggered priority conditions.
+The workflow preserves deterministic business authority:
+
+- The intake router selects the appropriate path based on mandatory-data validation.
+- The priority router selects an outcome path based on deterministic business rules and triggered priority conditions.
+- The deterministic explanation is generated after the business decision.
+- The optional Gemini service enhances explanation readability using structured evidence.
+- The Gemini response is validated before acceptance; failures and invalid responses retain the deterministic explanation.
+- The execution trace records provider, model, status, and reason for the Gemini enhancement.
+- The complete execution trace is preserved in the audit record.
 
 The following capabilities remain outside the current scope:
 
+- LLM-based validation, scoring, or business decision-making.
 - Dynamic agent selection beyond the defined deterministic workflow routes.
-- LLM-based decision-making.
 - Retrieval-Augmented Generation (RAG).
 - Vector databases.
 - Model Context Protocol (MCP).
 - Live CRM integration.
 - Automatic customer communication.
+- Persistent database-backed audit storage.
 
 LangGraph manages conditional workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
+
 
 ## 12. Architecture Objective
 
 LangGraph provides explicit conditional workflow orchestration through a StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
 
-The architecture preserves established business outcomes while making workflow execution, selected routes, triggering conditions, and audit trace information observable.
+The controlled Gemini enhancement improves explanation readability without changing deterministic business decisions. Output validation and deterministic fallback preserve the reliability of the workflow.
+
+The architecture makes workflow execution, selected routes, triggering conditions, LLM execution metadata, and audit trace information observable.
 
 ## 13. Historical Implementation — Phase 2.1 Linear Orchestration
 
@@ -4220,14 +4862,14 @@ Conditional routing, dynamic workflow paths, LLM-based decisions, RAG, vector da
 </file>
 
 <file path="README.md">
-# APEX — Lead Follow-up Prioritization Intelligence
+# APEX â€” Lead Follow-up Prioritization Intelligence
 
 **Case ID:** AA007
 **Assignment:** Lead Follow-up Prioritization Intelligence
 **Domain:** Sales Operations
-**Product:** APEX — Lead Intelligence Platform
+**Product:** APEX â€” Lead Intelligence Platform
 **Version:** 1.0.0
-**Current Phase:** 2.2 — LangGraph Conditional Routing
+**Current Phase:** Post 2.3 â€” Controlled LLM Enhancement
 
 ## 1. Overview
 
@@ -4236,6 +4878,8 @@ APEX is a deterministic, multi-agent application that helps sales teams prioriti
 The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
 
 The existing five specialized agents are orchestrated through a LangGraph StateGraph with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
+
+An optional, controlled Google Gemini service enhances the readability of the deterministic explanation. Gemini receives structured decision evidence, not the lead identifier, and cannot change the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the application retains the original deterministic explanation.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -4264,45 +4908,90 @@ Each completed workflow provides a priority score, score breakdown, triggered bu
 
 The workflow consists of five specialized agents:
 
-1. **Lead Intake Agent** — validates and normalizes lead information.
-2. **Recency Agent** — evaluates lead age and last-contact recency.
-3. **Engagement Agent** — scores approved business engagement events.
-4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
-5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
+1. **Lead Intake Agent** â€” validates and normalizes lead information.
+2. **Recency Agent** â€” evaluates lead age and last-contact recency.
+3. **Engagement Agent** â€” scores approved business engagement events.
+4. **Fit & SLA Agent** â€” evaluates declared business need and pending follow-up commitments.
+5. **Lead Priority Decision Agent** â€” combines agent outputs and applies deterministic decision rules.
 
-### LangGraph Orchestration — Phase 2.2
+### LangGraph Orchestration â€” Phase 2.2
 
 The five specialized agents are orchestrated through a LangGraph `StateGraph` using deterministic conditional routing. The graph uses shared workflow state and selects different execution paths based on mandatory-data validation and the deterministic priority decision.
 
 The workflow includes these core processing nodes:
 
-1. `build_context` — initializes the shared workflow context.
-2. `lead_intake` — validates and normalizes mandatory lead information.
-3. `recency` — evaluates lead age and last-contact recency.
-4. `engagement` — scores approved business engagement events.
-5. `fit_sla` — evaluates declared business need and pending follow-up commitments.
-6. `priority_decision` — calculates the deterministic recommendation.
-7. `explanation_audit` — generates the explanation and audit information for every outcome path.
+1. `build_context` â€” initializes the shared workflow context.
+2. `lead_intake` â€” validates and normalizes mandatory lead information.
+3. `recency` â€” evaluates lead age and last-contact recency.
+4. `engagement` â€” scores approved business engagement events.
+5. `fit_sla` â€” evaluates declared business need and pending follow-up commitments.
+6. `priority_decision` â€” calculates the deterministic recommendation.
+7. `explanation_audit` â€” generates the explanation and audit information for every outcome path.
 
 **Conditional routing after Lead Intake:**
 
-- Valid mandatory data → continue to `recency` and the analytical agents.
-- Missing mandatory data → `request_data` route, producing `REQUEST_DATA`.
-- Intake execution failure → `workflow_error` route.
+- Valid mandatory data â†’ continue to `recency` and the analytical agents.
+- Missing mandatory data â†’ `request_data` route, producing `REQUEST_DATA`.
+- Intake execution failure â†’ `workflow_error` route.
 
 **Conditional routing after Priority Decision:**
 
-- `OVERDUE_FOLLOW_UP` → `overdue_follow_up` route.
-- `HIGH_PRIORITY_SCORE` → `high_priority` route.
-- `MODERATE_PRIORITY_SCORE` → `follow_up_soon` route.
-- `LOW_PRIORITY_SCORE` → `nurture` route.
-- Agent execution failure or an unidentified priority route → `workflow_error` route.
+- `OVERDUE_FOLLOW_UP` â†’ `overdue_follow_up` route.
+- `HIGH_PRIORITY_SCORE` â†’ `high_priority` route.
+- `MODERATE_PRIORITY_SCORE` â†’ `follow_up_soon` route.
+- `LOW_PRIORITY_SCORE` â†’ `nurture` route.
+- Agent execution failure or an unidentified priority route â†’ `workflow_error` route.
 
 Each router records its selected route and triggering condition in the execution trace. The selected outcome node then leads to the shared `explanation_audit` node, ensuring that explanations and audit information are generated across the different paths.
 
 The audit record preserves a copy of the complete execution trace, including node execution statuses, selected routes, routing conditions, and the final `explanation_audit` completion entry.
 
 LangGraph manages conditional orchestration and shared state. All validation, scoring, recommendation selection, and business rules remain deterministic; routing does not delegate business decisions to an LLM.
+
+### Controlled LLM Enhancement â€” Post 2.3
+
+The workflow includes an optional Google Gemini enhancement after the deterministic explanation is generated and before the final audit is recorded.
+
+**Processing sequence:**
+
+1. The deterministic agents validate lead information and calculate the recommendation.
+2. LangGraph selects the appropriate conditional execution path.
+3. The deterministic priority decision establishes the recommendation and score.
+4. `build_explanation` generates the original evidence-based explanation.
+5. `gemini_explanation` optionally rewrites the explanation into a concise, readable summary.
+6. The response is validated before it is accepted.
+7. `explanation_audit` records the complete execution trace.
+
+**LLM boundaries and safeguards:**
+
+- Gemini only improves the readability of an existing explanation.
+- The deterministic recommendation and priority score remain authoritative.
+- Only structured decision evidence is sent to Gemini; the lead identifier is excluded.
+- The response must preserve the exact recommendation action and priority score.
+- Responses exceeding the configured length limit or containing multiple lines are rejected.
+- Provider errors, timeouts, missing configuration, and invalid responses trigger deterministic fallback.
+- No autonomous customer contact or LLM-based business decisions are performed.
+
+**Configuration:**
+
+The optional service is configured through environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | LLM provider (`gemini`). |
+| `GEMINI_API_KEY` | Google Gemini API key. |
+| `GEMINI_MODEL` | Configured Gemini model. |
+| `LLM_TIMEOUT` | Provider request timeout in seconds. |
+
+The API key is stored locally in `backend/.env` and must never be committed. `backend/.env.example` contains placeholder configuration.
+
+**Execution trace and audit:**
+
+The `gemini_explanation` trace entry records the provider, model, execution status, and reason. The audit record preserves this entry along with the rest of the workflow trace.
+
+If Gemini is unavailable or returns an invalid response, the original deterministic explanation is retained.
+
+The LLM does not control validation, scoring, routing, recommendation selection, or business rules.
 
 ## 5. Deterministic Decision Logic
 
@@ -4315,11 +5004,11 @@ The current MVP uses provisional scoring assumptions:
 
 Current decision precedence:
 
-1. Missing or invalid mandatory information → `REQUEST_DATA`.
-2. Overdue committed follow-up → `FOLLOW_UP_NOW`.
-3. Score of 70 or above → `FOLLOW_UP_NOW`.
-4. Score of 40 or above → `FOLLOW_UP_SOON`.
-5. Otherwise → `NURTURE`.
+1. Missing or invalid mandatory information â†’ `REQUEST_DATA`.
+2. Overdue committed follow-up â†’ `FOLLOW_UP_NOW`.
+3. Score of 70 or above â†’ `FOLLOW_UP_NOW`.
+4. Score of 40 or above â†’ `FOLLOW_UP_SOON`.
+5. Otherwise â†’ `NURTURE`.
 
 These weights, thresholds, and rules are provisional implementation assumptions for the MVP, not externally validated sales benchmarks.
 
@@ -4358,41 +5047,41 @@ These are illustrative sample records, not live customer data.
 
 ```text
 AA007-Lead-Follow-up-Prioritization-Intelligence/
-├── backend/
-│   ├── app/
-│   │   ├── agents/
-│   │   ├── api/
-│   │   ├── data/
-│   │   ├── models/
-│   │   ├── rules/
-│   │   └── services/
-│   │       ├── workflow_service.py
-│   │       ├── workflow_graph.py
-│   │       └── workflow_state.py
-│   ├── tests/
-│   ├── .dockerignore
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   ├── .dockerignore
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/
-│   └── architecture.md
-├── docker-compose.yml
-├── .gitignore
-└── README.md
+â”œâ”€â”€ backend/
+â”‚   â”œâ”€â”€ app/
+â”‚   â”‚   â”œâ”€â”€ agents/
+â”‚   â”‚   â”œâ”€â”€ api/
+â”‚   â”‚   â”œâ”€â”€ data/
+â”‚   â”‚   â”œâ”€â”€ models/
+â”‚   â”‚   â”œâ”€â”€ rules/
+â”‚   â”‚   â””â”€â”€ services/
+â”‚   â”‚       â”œâ”€â”€ workflow_service.py
+â”‚   â”‚       â”œâ”€â”€ workflow_graph.py
+â”‚   â”‚       â””â”€â”€ workflow_state.py
+â”‚   â”œâ”€â”€ tests/
+â”‚   â”œâ”€â”€ .dockerignore
+â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â””â”€â”€ requirements.txt
+â”œâ”€â”€ frontend/
+â”‚   â”œâ”€â”€ public/
+â”‚   â”œâ”€â”€ src/
+â”‚   â”œâ”€â”€ .dockerignore
+â”‚   â”œâ”€â”€ Dockerfile
+â”‚   â”œâ”€â”€ nginx.conf
+â”‚   â”œâ”€â”€ package.json
+â”‚   â””â”€â”€ vite.config.ts
+â”œâ”€â”€ docs/
+â”‚   â””â”€â”€ architecture.md
+â”œâ”€â”€ docker-compose.yml
+â”œâ”€â”€ .gitignore
+â””â”€â”€ README.md
 ```
 
 The backend workflow modules are:
 
-- `workflow_service.py` — invokes the compiled LangGraph workflow.
-- `workflow_graph.py` — defines the conditional-routing StateGraph and its outcome paths.
-- `workflow_state.py` — defines the shared state passed between graph nodes.
+- `workflow_service.py` â€” invokes the compiled LangGraph workflow.
+- `workflow_graph.py` â€” defines the conditional-routing StateGraph and its outcome paths.
+- `workflow_state.py` â€” defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
 
@@ -4565,8 +5254,8 @@ Current validation results:
 The application was built and validated using Docker Compose.
 
 **Container status:**
-- `aa007-backend` — running and healthy.
-- `aa007-frontend` — running and healthy.
+- `aa007-backend` â€” running and healthy.
+- `aa007-frontend` â€” running and healthy.
 - Frontend published on host port `8080`.
 
 **Health and API checks:**
@@ -4599,13 +5288,15 @@ Backend automated tests were also run locally:
 
 ## 12. Scope and Limitations
 
-### Current Phase 2.2 Capabilities
+### Current Post 2.3 Capabilities
 
 - Uses seeded sample data rather than a live CRM integration.
-- Uses deterministic business rules for lead prioritization.
+- Uses five specialized deterministic agents for lead validation, analysis, and prioritization.
 - Uses LangGraph conditional routing based on mandatory-data validation and deterministic priority rules.
-- Records workflow node execution, selected routes, and triggering conditions through execution tracing and preserves the complete trace in each audit record.
-- Preserves the existing five specialized agents and their business logic.
+- Preserves deterministic recommendation selection, scoring, and business rules.
+- Uses Google Gemini as an optional, controlled explanation-enhancement service.
+- Validates LLM output and falls back to the original deterministic explanation on provider errors, timeouts, missing configuration, or invalid responses.
+- Records workflow execution, routing decisions, and Gemini provider/model/status/reason in the execution trace and audit record.
 - Does not automatically send messages or contact leads.
 
 ### Out of Scope
@@ -4631,7 +5322,7 @@ The objective is to demonstrate a transparent, explainable, and testable multi-a
 
 The application combines five specialized deterministic agents, shared workflow context, LangGraph conditional routing, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
 
-Phase 2.2 extends the existing workflow with deterministic conditional routing while preserving established business rules, recommendations, and frontend and API integration.
+Post 2.3 builds on the deterministic multi-agent and LangGraph conditional-routing workflow by introducing a controlled, fallback-safe Gemini explanation enhancement. Deterministic business decisions remain authoritative, while the existing frontend and API integration are preserved.
 
 The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.
 </file>

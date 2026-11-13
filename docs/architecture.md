@@ -2,7 +2,7 @@
 
 **Product:** APEX — Lead Intelligence Platform
 **Case ID:** AA007
-**Architecture Version:** 2.2
+**Architecture Version:** 2.3
 
 ## 1. Architecture Overview
 
@@ -12,13 +12,13 @@ A lead record enters through the FastAPI endpoint. The LangGraph StateGraph init
 
 The Context Builder creates a run-scoped shared workflow context. The Lead Intake Agent validates the lead information before the analytical agents execute.
 
-For valid leads, all five agents execute. Leads with missing mandatory information follow the `request_data` path and skip the four downstream analytical agents. After priority evaluation, the graph selects an outcome path based on the deterministic triggered business rule. Every outcome path converges on explanation and audit generation.
+For valid leads, all five agents execute. Leads with missing mandatory information follow the `request_data` path and skip the four downstream analytical agents. After priority evaluation, the graph selects an outcome path based on the deterministic triggered business rule. Every outcome path converges on explanation generation, optional controlled Gemini enhancement, and audit recording.
 
 LangGraph manages conditional orchestration and shared workflow state. It does not independently make business decisions. The existing agents, deterministic scoring rules, recommendation logic, and business rules retain decision-making authority.
 
 The workflow records node execution statuses and router selections, including the selected route and triggering condition. The complete execution trace is copied into the audit record, including the final explanation and audit completion entry.
 
-The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references.
+The frontend exposes business inputs, workflow context, agent execution information, decision evidence, final recommendations, explanations, and audit references. An optional Google Gemini service enhances the readability of the deterministic explanation. It cannot alter the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the original deterministic explanation is retained.
 
 ## 2. High-Level Workflow
 
@@ -69,6 +69,12 @@ LangGraph StateGraph
        +-------------+--------------+
                      |
                      v
+             build_explanation
+                     |
+                     v
+            gemini_explanation
+                     |
+                     v
              explanation_audit
                      |
                      v
@@ -89,7 +95,9 @@ LangGraph StateGraph
 - **Moderate priority:** The priority router selects `follow_up_soon` when the `MODERATE_PRIORITY_SCORE` rule is triggered.
 - **Low priority:** The priority router selects `nurture` when the `LOW_PRIORITY_SCORE` rule is triggered.
 - **Workflow failure:** The graph selects `workflow_error` when an execution failure occurs or a priority route cannot be identified.
-- **Explanation and audit:** All outcome paths converge on `explanation_audit`, which builds the explanation, appends its completion entry, and records the audit information.
+- **Deterministic explanation:** All outcome paths converge on `build_explanation`, which generates the original evidence-based explanation.
+- **Gemini enhancement:** `gemini_explanation` optionally rewrites the explanation using structured decision evidence. The lead identifier is excluded, and the recommendation and priority score remain unchanged.
+- **Explanation and audit:** `explanation_audit` records the complete execution trace after the Gemini result or deterministic fallback has been applied.
 
 ### Conditional Routing and Execution Trace
 
@@ -178,9 +186,11 @@ Missing mandatory information results in `REQUEST_DATA`.
 
 The scoring configuration is an MVP implementation assumption and can be refined using approved business requirements and validated operational data.
 
-## 6. Explanation Service
+## 6. Explanation and Controlled LLM Enhancement
 
-The Explanation Service generates a structured explanation from the workflow context.
+### 6.1 Deterministic Explanation
+
+The Explanation Service generates the original structured explanation from the workflow context.
 
 It communicates:
 
@@ -190,7 +200,45 @@ It communicates:
 - Relevant evidence.
 - Known limitations.
 
-The explanation is based on deterministic workflow outputs rather than an external language model.
+This deterministic explanation remains the authoritative fallback.
+
+### 6.2 Gemini Explanation Enhancement
+
+The optional `GeminiExplainer` service improves the readability of the deterministic explanation after the business decision has been completed.
+
+The service receives only structured decision evidence, including:
+
+- Recommendation action.
+- Priority score.
+- Score breakdown.
+- Triggered business rules.
+- Supporting reasons.
+- Executed agents.
+
+The lead identifier is excluded from the external request.
+
+**Validation and safeguards:**
+
+- The response must preserve the exact recommendation action and priority score.
+- The response must be non-empty, single-line, and no longer than 500 characters.
+- Provider errors, timeouts, missing configuration, and invalid responses result in deterministic fallback.
+- The LLM cannot modify validation, scoring, routing, recommendation selection, or business rules.
+- The service does not initiate customer communication or autonomous actions.
+
+The provider, model, status, and execution reason are recorded in the `gemini_explanation` execution-trace entry.
+
+### 6.3 Configuration
+
+The service reads its configuration from environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | Selects the configured provider. |
+| `GEMINI_API_KEY` | Authenticates requests to Google Gemini. |
+| `GEMINI_MODEL` | Specifies the Gemini model. |
+| `LLM_TIMEOUT` | Sets the request timeout in seconds. |
+
+The API key is kept outside source control in `backend/.env`. The example environment file contains placeholders only.
 
 ## 7. Audit Service
 
@@ -205,8 +253,9 @@ The Audit Service records information about workflow executions, including:
 - Final recommendation.
 - Errors, where applicable.
 - Complete execution trace, including selected routes, triggering conditions, and node statuses.
+- Gemini enhancement metadata, including provider, model, status, and execution reason, when the enhancement node executes.
 
-The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended.
+The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended. The trace includes the Gemini enhancement status and fallback reason when applicable.
 
 Audit records are stored in process-local memory in the current MVP. The execution trace is preserved in each audit record, but records are not durable across backend restarts. Persistent audit storage is outside the current implementation scope.
 
@@ -292,9 +341,20 @@ The frontend Render service requires:
 
 | Variable | Configuration |
 |---|---|
-| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
+| `BACKEND_URL` | Public URL of the backend service. |
 
-No application secrets are required for the current deployment.
+The backend Render service uses the following optional Gemini configuration:
+
+| Variable | Purpose |
+|---|---|
+| `LLM_PROVIDER` | Set to `gemini`. |
+| `GEMINI_API_KEY` | Secret Google Gemini API key. |
+| `GEMINI_MODEL` | Configured Gemini model. |
+| `LLM_TIMEOUT` | Provider request timeout in seconds. |
+
+The Gemini API key must be configured as a secret environment variable in Render. It must not be committed to source control or included in documentation.
+
+If Gemini is not configured or is unavailable, the workflow retains its deterministic explanation through the fallback mechanism.
 
 ### Cloud Deployment Constraints
 
@@ -311,6 +371,8 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - FastAPI for backend API services.
 - Pydantic for structured data validation.
 - LangGraph for deterministic conditional workflow orchestration using StateGraph.
+- Google Gen AI SDK for optional, controlled Gemini explanation enhancement.
+- python-dotenv for loading local environment configuration.
 - React and TypeScript for the user interface.
 - Deterministic scoring and decision rules.
 - Seeded sample data for reproducible demonstrations.
@@ -318,29 +380,41 @@ The cloud deployment changes the hosting and request-routing arrangement only. I
 - Docker and Docker Compose for containerized local validation.
 - Render for cloud deployment.
 
-### Current Phase 2.2 Scope
+### Current Post 2.3 Scope
 
-The current implementation uses LangGraph conditional routing to orchestrate the existing five-agent workflow through deterministic business paths.
+The current implementation combines five specialized deterministic agents, LangGraph conditional routing, and one controlled Google Gemini explanation enhancement.
 
-The intake router selects the appropriate path based on mandatory-data validation. The priority router selects an outcome path based on deterministic business rules and triggered priority conditions.
+The workflow preserves deterministic business authority:
+
+- The intake router selects the appropriate path based on mandatory-data validation.
+- The priority router selects an outcome path based on deterministic business rules and triggered priority conditions.
+- The deterministic explanation is generated after the business decision.
+- The optional Gemini service enhances explanation readability using structured evidence.
+- The Gemini response is validated before acceptance; failures and invalid responses retain the deterministic explanation.
+- The execution trace records provider, model, status, and reason for the Gemini enhancement.
+- The complete execution trace is preserved in the audit record.
 
 The following capabilities remain outside the current scope:
 
+- LLM-based validation, scoring, or business decision-making.
 - Dynamic agent selection beyond the defined deterministic workflow routes.
-- LLM-based decision-making.
 - Retrieval-Augmented Generation (RAG).
 - Vector databases.
 - Model Context Protocol (MCP).
 - Live CRM integration.
 - Automatic customer communication.
+- Persistent database-backed audit storage.
 
 LangGraph manages conditional workflow execution and shared state. Business scoring, prioritization, and recommendations remain deterministic and are produced by the existing agents and business rules.
+
 
 ## 12. Architecture Objective
 
 LangGraph provides explicit conditional workflow orchestration through a StateGraph, while the existing agents retain responsibility for validation, evidence evaluation, scoring, and prioritization.
 
-The architecture preserves established business outcomes while making workflow execution, selected routes, triggering conditions, and audit trace information observable.
+The controlled Gemini enhancement improves explanation readability without changing deterministic business decisions. Output validation and deterministic fallback preserve the reliability of the workflow.
+
+The architecture makes workflow execution, selected routes, triggering conditions, LLM execution metadata, and audit trace information observable.
 
 ## 13. Historical Implementation — Phase 2.1 Linear Orchestration
 

@@ -5,6 +5,8 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: aa007-backend
+    env_file:
+      - ./backend/.env
     expose:
       - "8002"
     healthcheck:

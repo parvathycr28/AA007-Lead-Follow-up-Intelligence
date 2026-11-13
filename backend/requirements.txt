@@ -4,3 +4,5 @@ pydantic
 pytest
 httpx
 langgraph==1.2.20
+google-genai
+python-dotenv

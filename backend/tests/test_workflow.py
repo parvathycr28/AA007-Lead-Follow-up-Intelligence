@@ -7,10 +7,26 @@ from app.data.seed_leads import get_seed_scenarios
 from app.services.workflow_service import WorkflowService
 from app.services.audit_service import AuditService
 from app.models.lead import LeadRecord
-
+from app.services.gemini_explainer import GeminiExplainer
+from app.services.llm_config import LLMConfig
 
 client = TestClient(app)
+@pytest.fixture(autouse=True)
+def prevent_live_gemini_calls(monkeypatch):
+    def mock_enhance(context):
+        return {
+            "summary": context.explanation["summary"],
+            "status": "fallback",
+            "provider": "gemini",
+            "model": LLMConfig.MODEL,
+            "reason": "test_fallback",
+        }
 
+    monkeypatch.setattr(
+        GeminiExplainer,
+        "enhance",
+        staticmethod(mock_enhance),
+    )
 
 @pytest.mark.parametrize(
     "scenario_name, expected_action, expected_score, expected_route, expected_condition",
@@ -62,7 +78,16 @@ def test_seed_scenario_workflow(
     audit_record = AuditService.get(context.audit_reference)
     assert audit_record is not None
     assert audit_record.execution_trace == context.execution_trace
+    gemini_audit_entry = next(
+        item
+        for item in audit_record.execution_trace
+        if item["node"] == "gemini_explanation"
+    )
 
+    assert gemini_audit_entry["status"] == "fallback"
+    assert gemini_audit_entry["provider"] == "gemini"
+    assert gemini_audit_entry["model"] == LLMConfig.MODEL
+    assert gemini_audit_entry["reason"] == "test_fallback"
     assert any(
         item["node"] == "intake_router"
         and item.get("route") == "recency"
@@ -99,9 +124,10 @@ def test_seed_scenario_workflow(
         "priority_decision",
         "priority_router",
         expected_route,
+        "build_explanation",
+        "gemini_explanation",
         "explanation_audit",
     ]
-
     intake_route = next(
         item
         for item in context.execution_trace
@@ -121,10 +147,9 @@ def test_seed_scenario_workflow(
     assert priority_route["condition"] == expected_condition
 
     assert all(
-        item["status"] in ("completed", "selected")
+        item["status"] in ("completed", "selected", "fallback")
         for item in context.execution_trace
     )
-
 
 def test_scenario_listing_api():
     response = client.get("/api/leads/scenarios")
@@ -193,9 +218,10 @@ def test_missing_contact_returns_request_data():
         ("lead_intake", "completed"),
         ("intake_router", "selected"),
         ("request_data", "completed"),
+        ("build_explanation", "completed"),
+        ("gemini_explanation", "fallback"),
         ("explanation_audit", "completed"),
     ]
-
     intake_route = next(
         item
         for item in actual_trace
@@ -268,3 +294,12 @@ def test_high_priority_score_uses_high_priority_route():
     assert context.explanation is not None
     assert context.audit_reference is not None
     assert context.errors == []
+    gemini_trace = next(
+        item
+        for item in context.execution_trace
+        if item["node"] == "gemini_explanation"
+    )
+
+    assert gemini_trace["status"] == "fallback"
+    assert gemini_trace["provider"] == "gemini"
+    assert gemini_trace["reason"] == "test_fallback"
