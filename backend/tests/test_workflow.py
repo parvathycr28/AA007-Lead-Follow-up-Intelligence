@@ -1,3 +1,4 @@
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -12,17 +13,37 @@ client = TestClient(app)
 
 
 @pytest.mark.parametrize(
-    "scenario_name, expected_action, expected_score",
+    "scenario_name, expected_action, expected_score, expected_route, expected_condition",
     [
-        ("hot", "FOLLOW_UP_NOW", 95),
-        ("warm", "FOLLOW_UP_SOON", 65),
-        ("stale", "NURTURE", 0),
+        (
+            "hot",
+            "FOLLOW_UP_NOW",
+            95,
+            "overdue_follow_up",
+            "OVERDUE_FOLLOW_UP",
+        ),
+        (
+            "warm",
+            "FOLLOW_UP_SOON",
+            65,
+            "follow_up_soon",
+            "MODERATE_PRIORITY_SCORE",
+        ),
+        (
+            "stale",
+            "NURTURE",
+            0,
+            "nurture",
+            "LOW_PRIORITY_SCORE",
+        ),
     ],
 )
 def test_seed_scenario_workflow(
     scenario_name,
     expected_action,
     expected_score,
+    expected_route,
+    expected_condition,
 ):
     scenarios = get_seed_scenarios()
     scenario = scenarios[scenario_name]
@@ -40,21 +61,48 @@ def test_seed_scenario_workflow(
     assert context.audit_reference is not None
     assert AuditService.get(context.audit_reference) is not None
     assert context.errors == []
-    expected_nodes = [
+
+    actual_nodes = [
+        item["node"]
+        for item in context.execution_trace
+    ]
+
+    assert actual_nodes == [
         "build_context",
         "lead_intake",
+        "intake_router",
         "recency",
         "engagement",
         "fit_sla",
         "priority_decision",
+        "priority_router",
+        expected_route,
         "explanation_audit",
     ]
 
-    assert [item["node"] for item in context.execution_trace] == expected_nodes
+    intake_route = next(
+        item
+        for item in context.execution_trace
+        if item["node"] == "intake_router"
+    )
+
+    assert intake_route["route"] == "recency"
+    assert intake_route["condition"] == "INTAKE_VALID"
+
+    priority_route = next(
+        item
+        for item in context.execution_trace
+        if item["node"] == "priority_router"
+    )
+
+    assert priority_route["route"] == expected_route
+    assert priority_route["condition"] == expected_condition
+
     assert all(
-        item["status"] == "completed"
+        item["status"] in ("completed", "selected")
         for item in context.execution_trace
     )
+
 
 def test_scenario_listing_api():
     response = client.get("/api/leads/scenarios")
@@ -112,20 +160,89 @@ def test_missing_contact_returns_request_data():
     assert context.explanation is not None
     assert context.audit_reference is not None
     assert context.errors
-    expected_trace = [
+
+    actual_trace = context.execution_trace
+
+    assert [
+        (item["node"], item["status"])
+        for item in actual_trace
+    ] == [
         ("build_context", "completed"),
         ("lead_intake", "completed"),
-        ("recency", "skipped"),
-        ("engagement", "skipped"),
-        ("fit_sla", "skipped"),
-        ("priority_decision", "skipped"),
+        ("intake_router", "selected"),
+        ("request_data", "completed"),
         ("explanation_audit", "completed"),
     ]
 
-    actual_trace = [
-        (item["node"], item["status"])
-        for item in context.execution_trace
+    intake_route = next(
+        item
+        for item in actual_trace
+        if item["node"] == "intake_router"
+    )
+
+    assert intake_route["route"] == "request_data"
+    assert intake_route["condition"] == "MISSING_MANDATORY_DATA"
+
+    assert list(context.agent_outputs.keys()) == ["lead_intake"]
+
+def test_high_priority_score_uses_high_priority_route():
+    from datetime import datetime, timezone, timedelta
+
+    from app.models.lead import EngagementEvent
+
+    now = datetime.now(timezone.utc)
+
+    lead = LeadRecord(
+        lead_id="LEAD-TEST-HIGH",
+        source="Website",
+        created_at=now - timedelta(days=2),
+        last_contact_at=now - timedelta(days=1),
+        declared_need="Enterprise software",
+        stage="Qualified",
+        contact_available=True,
+        pending_follow_up=False,
+    )
+
+    events = [
+        EngagementEvent(
+            event_id=f"HIGH-E{i}",
+            event_type=event_type,
+            occurred_at=now - timedelta(hours=i),
+        )
+        for i, event_type in enumerate(
+            [
+                "inquiry",
+                "email_response",
+                "meeting_attended",
+                "follow_up_response",
+            ],
+            start=1,
+        )
     ]
 
-    assert actual_trace == expected_trace
-    assert list(context.agent_outputs.keys()) == ["lead_intake"]
+    context = WorkflowService.execute(lead, events)
+
+    assert context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert context.final_recommendation["priority_score"] == 100
+    assert context.final_recommendation["triggered_rules"] == [
+        "HIGH_PRIORITY_SCORE"
+    ]
+
+    priority_route = next(
+        item
+        for item in context.execution_trace
+        if item["node"] == "priority_router"
+    )
+
+    assert priority_route["route"] == "high_priority"
+    assert priority_route["condition"] == "HIGH_PRIORITY_SCORE"
+
+    assert any(
+        item["node"] == "high_priority"
+        and item["status"] == "completed"
+        for item in context.execution_trace
+    )
+
+    assert context.explanation is not None
+    assert context.audit_reference is not None
+    assert context.errors == []
