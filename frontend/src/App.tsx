@@ -95,10 +95,13 @@ type WorkflowResult = {
   errors: string[]
 }
 
-const agentDefinitions: Record<string, {
-  responsibility: string
-  input: string
-}> = {
+const agentDefinitions: Record<
+  string,
+  {
+    responsibility: string
+    input: string
+  }
+> = {
   lead_intake: {
     responsibility: 'Validates mandatory lead fields and normalizes lead information.',
     input: 'Lead record',
@@ -134,6 +137,28 @@ const actionLabels: Record<string, string> = {
   FOLLOW_UP_SOON: 'Follow Up Soon',
   NURTURE: 'Nurture',
   REQUEST_DATA: 'Request Data',
+}
+
+const actionDescriptions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'This lead needs prompt attention. Review the available evidence and arrange the next follow-up.',
+  FOLLOW_UP_SOON:
+    'This lead should remain in the active follow-up queue. Schedule the next contact soon.',
+  NURTURE:
+    'This lead is better suited to continued engagement. Keep it in the nurture process and review it later.',
+  REQUEST_DATA:
+    'Some mandatory lead information is missing. Complete the required information before prioritization can continue.',
+}
+
+const nextActions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'Contact the lead as soon as practical. Review the declared need and agree on the next step.',
+  FOLLOW_UP_SOON:
+    'Schedule a follow-up within your team’s normal response window and keep the lead on the active list.',
+  NURTURE:
+    'Add the lead to the appropriate nurture queue and plan a future engagement review.',
+  REQUEST_DATA:
+    'Ask the responsible team member to provide the missing contact or lead information, then reassess.',
 }
 
 function formatValue(value: unknown): string {
@@ -181,7 +206,9 @@ function App() {
         const data: Scenarios = await response.json()
         setScenarios(data)
       } catch {
-        setError('Could not connect to the backend. Please check that the API server is running.')
+        setError(
+          'Could not connect to the backend. Please check that the API server is running.',
+        )
       }
     }
 
@@ -211,6 +238,7 @@ function App() {
       setLoading(false)
     }
   }
+
   async function runMissingContactTest() {
     setLoading(true)
     setError('')
@@ -249,11 +277,14 @@ function App() {
       const data: WorkflowResult = await response.json()
       setResult(data)
     } catch {
-      setError('Unable to execute the missing-contact test. Please check the backend.')
+      setError(
+        'Unable to execute the missing-contact test. Please check the backend.',
+      )
     } finally {
       setLoading(false)
     }
   }
+
   const context = result?.workflow_context
   const executedOutputs = context?.agent_outputs ?? {}
   const executedAgentKeys = Object.keys(executedOutputs)
@@ -339,6 +370,7 @@ function App() {
             </button>
           </div>
         </section>
+
         <section className="scenario-panel">
           <div className="section-heading">
             <div>
@@ -364,6 +396,7 @@ function App() {
             </button>
           </div>
         </section>
+
         {error && <div className="error-message">{error}</div>}
 
         {result && context && (
@@ -381,9 +414,14 @@ function App() {
                 <div className="recommendation-card">
                   <span className="metric-label">RECOMMENDED ACTION</span>
                   <h2>
-                    {actionLabels[result.recommendation.action] || result.recommendation.action}
+                    {actionLabels[result.recommendation.action] ||
+                      result.recommendation.action}
                   </h2>
                   <p>{result.recommendation.reasons.join(' ')}</p>
+                  <div className="recommendation-context">
+                    {actionDescriptions[result.recommendation.action] ||
+                      'Review the recommendation and supporting evidence.'}
+                  </div>
                 </div>
 
                 <div className="score-card">
@@ -396,10 +434,27 @@ function App() {
                     <div
                       className="score-fill"
                       style={{
-                        width: `${Math.min(result.recommendation.priority_score, 100)}%`,
+                        width: `${Math.min(
+                          result.recommendation.priority_score,
+                          100,
+                        )}%`,
                       }}
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="next-action-card">
+                <div className="next-action-icon">→</div>
+                <div>
+                  <span className="metric-label">SUGGESTED NEXT ACTION</span>
+                  <h4>
+                    {actionLabels[result.recommendation.action] || 'Review lead'}
+                  </h4>
+                  <p>
+                    {nextActions[result.recommendation.action] ||
+                      'Review the available lead information and determine the appropriate next step.'}
+                  </p>
                 </div>
               </div>
 
@@ -422,7 +477,9 @@ function App() {
                 <div className="rule-list">
                   {result.recommendation.triggered_rules.length > 0 ? (
                     result.recommendation.triggered_rules.map((rule) => (
-                      <span className="rule-tag" key={rule}>{rule}</span>
+                      <span className="rule-tag" key={rule}>
+                        {rule}
+                      </span>
                     ))
                   ) : (
                     <span className="muted-text">No rules recorded.</span>
@@ -459,7 +516,10 @@ function App() {
               {context.engagement_events.length > 0 ? (
                 <div className="event-list">
                   {context.engagement_events.map((event, index) => (
-                    <div className="event-row" key={String(event.event_id ?? index)}>
+                    <div
+                      className="event-row"
+                      key={String(event.event_id ?? index)}
+                    >
                       <strong>{formatValue(event.event_type)}</strong>
                       <span>{formatValue(event.event_id)}</span>
                       <small>{formatDate(event.occurred_at)}</small>
@@ -497,7 +557,9 @@ function App() {
               <div className="context-grid">
                 <div className="context-item">
                   <span>Normalized Lead Snapshot</span>
-                  <strong>{context.validated_lead ? 'Available' : 'Not available'}</strong>
+                  <strong>
+                    {context.validated_lead ? 'Available' : 'Not available'}
+                  </strong>
                 </div>
                 <div className="context-item">
                   <span>Recency Score</span>
@@ -523,14 +585,22 @@ function App() {
 
               <h4>Execution Summary</h4>
               <div className="context-updates">
-                <div><span>01</span> Lead record and engagement events initialized</div>
+                <div>
+                  <span>01</span> Lead record and engagement events initialized
+                </div>
                 <div>
                   <span>02</span>
                   Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
                 </div>
-                <div><span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context</div>
-                <div><span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}</div>
-                <div><span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}</div>
+                <div>
+                  <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
+                </div>
+                <div>
+                  <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
+                </div>
+                <div>
+                  <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
+                </div>
               </div>
 
               <p className="muted-text context-note">
@@ -556,7 +626,10 @@ function App() {
                   const definition = agentDefinitions[key]
 
                   return (
-                    <article className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`} key={key}>
+                    <article
+                      className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
+                      key={key}
+                    >
                       <div className="agent-card-heading">
                         <span className="agent-number">
                           {String(index + 1).padStart(2, '0')}
@@ -565,7 +638,11 @@ function App() {
                           <h4>{definition.responsibility.split('.')[0]}</h4>
                           <p>{definition.responsibility}</p>
                         </div>
-                        <span className={output ? 'agent-status' : 'agent-skipped-status'}>
+                        <span
+                          className={
+                            output ? 'agent-status' : 'agent-skipped-status'
+                          }
+                        >
                           {output ? 'Executed' : 'Not executed'}
                         </span>
                       </div>
@@ -611,7 +688,9 @@ function App() {
               <div className="rule-list">
                 {context.sla_flags.length > 0 ? (
                   context.sla_flags.map((flag) => (
-                    <span className="rule-tag" key={flag}>{flag}</span>
+                    <span className="rule-tag" key={flag}>
+                      {flag}
+                    </span>
                   ))
                 ) : (
                   <span className="muted-text">No SLA flags recorded.</span>
@@ -664,12 +743,17 @@ function App() {
                 </div>
                 <div>
                   <span>Audit Timestamp</span>
-                  <strong>{result.audit_record ? formatDate(result.audit_record.timestamp) : 'Not available'}</strong>
+                  <strong>
+                    {result.audit_record
+                      ? formatDate(result.audit_record.timestamp)
+                      : 'Not available'}
+                  </strong>
                 </div>
                 <div>
                   <span>Recorded Agent Sequence</span>
                   <strong>
-                    {result.audit_record?.agent_sequence.join(' → ') || 'No agents recorded'}
+                    {result.audit_record?.agent_sequence.join(' → ') ||
+                      'No agents recorded'}
                   </strong>
                 </div>
                 <div>
@@ -685,17 +769,26 @@ function App() {
                     {JSON.stringify(
                       result.audit_record.execution_trace,
                       null,
-    2
+                      2,
                     )}
                   </pre>
+
                   <h4>Recorded Recommendation</h4>
                   <pre className="json-output">
-                    {JSON.stringify(result.audit_record.final_recommendation, null, 2)}
+                    {JSON.stringify(
+                      result.audit_record.final_recommendation,
+                      null,
+                      2,
+                    )}
                   </pre>
 
                   <h4>Recorded Agent Outputs</h4>
                   <pre className="json-output">
-                    {JSON.stringify(result.audit_record.agent_outputs, null, 2)}
+                    {JSON.stringify(
+                      result.audit_record.agent_outputs,
+                      null,
+                      2,
+                    )}
                   </pre>
                 </>
               )}
