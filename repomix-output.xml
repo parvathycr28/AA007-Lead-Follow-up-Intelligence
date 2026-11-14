@@ -86,6 +86,13 @@ backend/
   .gitignore
   Dockerfile
   requirements.txt
+backups/
+  phase-2/
+    App.css
+    App.tsx
+  phase-3-1/
+    App.css
+    App.tsx
 docs/
   architecture.md
 frontend/
@@ -122,6 +129,3493 @@ README.md
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="backups/phase-2/App.css">
+:root {
+  --navy: #080f1e;
+  --surface: #111d32;
+  --surface-raised: #1a2945;
+  --surface-soft: #202f4b;
+  --gold: #d5a62e;
+  --gold-soft: rgba(213, 166, 46, 0.13);
+  --text: #f5f3ed;
+  --muted: #aab6c9;
+  --border: #34445f;
+  --success: #72c6a0;
+  --danger: #e58d8d;
+  --shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--navy);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+button {
+  font: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: var(--navy);
+}
+
+.topbar {
+  min-height: 82px;
+  padding: 16px max(5%, calc((100% - 1320px) / 2));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: #060c18;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.brand-mark {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--gold);
+  color: var(--navy);
+  font-size: 23px;
+  font-weight: 850;
+}
+
+.brand h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 21px;
+  letter-spacing: 2px;
+}
+
+.brand p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 10px rgba(114, 198, 160, 0.4);
+}
+
+.page-content {
+  width: min(1320px, 90%);
+  margin: 0 auto;
+  padding: 42px 0 70px;
+}
+
+.page-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+
+.page-heading h2 {
+  max-width: 800px;
+  margin: 9px 0;
+  color: var(--text);
+  font-size: clamp(27px, 4vw, 38px);
+  line-height: 1.2;
+  letter-spacing: -1px;
+}
+
+.eyebrow {
+  margin: 0 0 9px;
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+}
+
+.subtitle,
+.section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.version-tag,
+.scenario-count {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--gold);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.scenario-panel,
+.result-panel,
+.audit-panel {
+  margin-bottom: 22px;
+  padding: 25px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.section-heading h3,
+.result-panel h3,
+.audit-panel h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 21px;
+  line-height: 1.35;
+}
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.scenario-card {
+  min-width: 0;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+
+.scenario-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+}
+
+.scenario-card.selected {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.scenario-name {
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+.scenario-card strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.scenario-description {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.run-row {
+  margin-top: 23px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.run-button {
+  min-height: 45px;
+  padding: 0 19px;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--gold);
+  color: #111827;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.run-button:hover:not(:disabled) {
+  background: #e6bd51;
+  transform: translateY(-1px);
+}
+
+.run-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
+}
+
+.recommendation-card,
+.score-card {
+  min-width: 0;
+  padding: 23px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-raised);
+}
+
+.recommendation-card {
+  border-left: 4px solid var(--gold);
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.recommendation-card h2 {
+  margin: 13px 0 9px;
+  color: var(--gold);
+  font-size: clamp(23px, 3vw, 32px);
+}
+
+.recommendation-card p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.score-value {
+  margin: 14px 0;
+  color: var(--gold);
+  font-size: 43px;
+  font-weight: 800;
+}
+
+.score-value small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.score-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #34445f;
+}
+
+.score-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--gold);
+  transition: width 0.4s ease;
+}
+
+.completed-tag,
+.agent-status {
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: rgba(114, 198, 160, 0.12);
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.breakdown-section,
+.rules-section {
+  margin-top: 25px;
+}
+
+.result-panel h4,
+.audit-panel h4 {
+  margin: 23px 0 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.breakdown-item,
+.context-item,
+.data-item {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-raised);
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.breakdown-item strong {
+  color: var(--gold);
+}
+
+.rule-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.rule-tag {
+  padding: 7px 11px;
+  border: 1px solid rgba(213, 166, 46, 0.45);
+  border-radius: 6px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.input-grid,
+.context-grid,
+.context-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.context-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 13px;
+}
+
+.data-item,
+.context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.data-item span,
+.context-item span,
+.agent-detail-grid span,
+.audit-details span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.data-item strong,
+.context-item strong,
+.agent-detail-grid strong,
+.audit-details strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.context-item strong {
+  color: var(--gold);
+  font-size: 18px;
+}
+
+.event-list {
+  display: grid;
+  gap: 9px;
+}
+
+.event-row {
+  padding: 13px 15px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.event-row strong {
+  color: var(--gold);
+  font-size: 13px;
+}
+
+.event-row span,
+.event-row small {
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.context-updates {
+  display: grid;
+  gap: 10px;
+}
+
+.context-updates div {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.context-updates span {
+  color: var(--gold);
+  font-weight: 800;
+}
+
+.context-note {
+  margin-top: 17px;
+}
+
+.muted-text {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workflow-line {
+  display: grid;
+  gap: 15px;
+}
+
+.agent-card {
+  min-width: 0;
+  padding: 19px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+
+.agent-executed {
+  border-left: 3px solid var(--success);
+}
+
+.agent-skipped {
+  border-left: 3px solid #68758a;
+  opacity: 0.75;
+}
+
+.agent-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.agent-number {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.agent-card-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-card-heading h4 {
+  margin: 2px 0 5px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.agent-card-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.agent-skipped-status {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.agent-detail-grid {
+  margin: 17px 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.agent-detail-grid > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.agent-card h5 {
+  margin: 17px 0 9px;
+  color: var(--gold);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.json-output {
+  max-width: 100%;
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #080f1e;
+  color: #d6dfec;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reason-list {
+  margin: 0;
+  padding-left: 21px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.explanation-text {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.audit-details {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.audit-details > div {
+  min-width: 0;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-raised);
+}
+
+.audit-details strong {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+}
+
+.error-message {
+  margin: 18px 0;
+  padding: 13px 16px;
+  border: 1px solid rgba(229, 141, 141, 0.4);
+  border-radius: 8px;
+  background: rgba(229, 141, 141, 0.1);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.validation-message {
+  margin: 18px 0;
+  padding: 13px 16px;
+  border: 1px solid rgba(213, 166, 46, 0.4);
+  border-radius: 8px;
+  background: rgba(213, 166, 46, 0.08);
+  color: #e7c66f;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.empty-state {
+  padding: 65px 25px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 25px;
+}
+
+.empty-state h3 {
+  color: var(--text);
+}
+
+.empty-state p {
+  max-width: 570px;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.footer {
+  min-height: 65px;
+  padding: 18px 5%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  border-top: 1px solid var(--border);
+  background: #060c18;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+@media (max-width: 850px) {
+  .page-content {
+    width: 92%;
+    padding-top: 30px;
+  }
+
+  .scenario-grid,
+  .input-grid,
+  .context-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .result-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    padding: 14px 4%;
+  }
+
+  .system-status {
+    font-size: 10px;
+  }
+
+  .page-content {
+    width: 92%;
+    padding: 25px 0 45px;
+  }
+
+  .page-heading {
+    flex-direction: column;
+  }
+
+  .page-heading h2 {
+    font-size: 27px;
+  }
+
+  .scenario-panel,
+  .result-panel,
+  .audit-panel {
+    padding: 17px;
+    border-radius: 11px;
+  }
+
+  .scenario-grid,
+  .input-grid,
+  .context-grid,
+  .context-meta,
+  .breakdown-grid,
+  .audit-details {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    flex-direction: column;
+  }
+
+  .run-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .run-button {
+    justify-content: center;
+  }
+
+  .event-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .agent-card-heading {
+    flex-wrap: wrap;
+  }
+
+  .agent-card-heading > div {
+    flex-basis: calc(100% - 50px);
+  }
+
+  .agent-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+</file>
+
+<file path="backups/phase-2/App.tsx">
+import { useEffect, useState } from 'react'
+import './App.css'
+
+type Scenario = {
+  description: string
+  lead_id: string
+}
+
+type Scenarios = Record<string, Scenario>
+
+type AgentOutput = {
+  agent_name: string
+  status?: string
+  validated_lead?: Record<string, unknown> | null
+  errors?: string[]
+  score?: number
+  days_since_last_contact?: number | null
+  event_count?: number
+  recognized_events?: string[]
+  reason?: string
+  fit_score?: number
+  sla_flags?: string[]
+  priority_score?: number
+  action?: string
+  triggered_rules?: string[]
+  reasons?: string[]
+}
+
+type WorkflowContext = {
+  workflow_id: string
+  started_at: string
+  lead_record: Record<string, unknown>
+  engagement_events: Array<Record<string, unknown>>
+  validated_lead: Record<string, unknown> | null
+  recency_score: number | null
+  engagement_score: number | null
+  fit_score: number | null
+  sla_flags: string[]
+  agent_outputs: Record<string, AgentOutput>
+  final_recommendation: Recommendation | null
+  explanation: Record<string, unknown> | null
+  audit_reference: string | null
+  errors: string[]
+}
+
+type Recommendation = {
+  priority_score: number
+  action: string
+  triggered_rules: string[]
+  reasons: string[]
+}
+
+type AuditRecord = {
+  audit_reference: string
+  workflow_id: string
+  timestamp: string
+  lead_id: string
+  agent_sequence: string[]
+  agent_outputs: Record<string, AgentOutput>
+  triggered_rules: string[]
+  final_recommendation: Recommendation
+  execution_trace: Array<{
+    node: string
+    status: string
+    provider?: string
+    model?: string
+    reason?: string
+    route?: string
+    condition?: string
+  }>
+  errors: string[]
+}
+
+type WorkflowResult = {
+  workflow_id: string
+  scenario?: string
+  lead_id: string
+  recommendation: Recommendation
+  explanation: {
+    summary: string
+    executed_agents: string[]
+    score_breakdown: {
+      recency: number | null
+      engagement: number | null
+      fit: number | null
+    }
+    triggered_rules: string[]
+    reasons: string[]
+    limitations: string[]
+  }
+  audit_reference: string
+  workflow_context: WorkflowContext
+  audit_record: AuditRecord | null
+  errors: string[]
+}
+
+const agentDefinitions: Record<string, {
+  responsibility: string
+  input: string
+}> = {
+  lead_intake: {
+    responsibility: 'Validates mandatory lead fields and normalizes lead information.',
+    input: 'Lead record',
+  },
+  recency: {
+    responsibility: 'Evaluates how recently the lead was contacted.',
+    input: 'Validated lead and last-contact date',
+  },
+  engagement: {
+    responsibility: 'Scores recognized business engagement events.',
+    input: 'Validated lead and engagement events',
+  },
+  fit_sla: {
+    responsibility: 'Evaluates declared business need and pending follow-up SLA.',
+    input: 'Validated lead and follow-up information',
+  },
+  lead_priority: {
+    responsibility: 'Combines agent scores and business rules into a recommendation.',
+    input: 'Recency, engagement, fit and SLA outputs',
+  },
+}
+
+const agentOrder = [
+  'lead_intake',
+  'recency',
+  'engagement',
+  'fit_sla',
+  'lead_priority',
+]
+
+const actionLabels: Record<string, string> = {
+  FOLLOW_UP_NOW: 'Follow Up Now',
+  FOLLOW_UP_SOON: 'Follow Up Soon',
+  NURTURE: 'Nurture',
+  REQUEST_DATA: 'Request Data',
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') {
+    return 'Not provided'
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+
+  return String(value)
+}
+
+function formatDate(value: unknown): string {
+  if (!value || typeof value !== 'string') return 'Not provided'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString()
+}
+
+function App() {
+  const [scenarios, setScenarios] = useState<Scenarios>({})
+  const [selectedScenario, setSelectedScenario] = useState('hot')
+  const [result, setResult] = useState<WorkflowResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadScenarios() {
+      try {
+        const response = await fetch('/api/leads/scenarios')
+
+        if (!response.ok) {
+          throw new Error('Unable to load scenarios.')
+        }
+
+        const data: Scenarios = await response.json()
+        setScenarios(data)
+      } catch {
+        setError('Could not connect to the backend. Please check that the API server is running.')
+      }
+    }
+
+    loadScenarios()
+  }, [])
+
+  async function runScenario() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    try {
+      const response = await fetch(
+        `/api/leads/scenarios/${selectedScenario}/run`,
+        { method: 'POST' },
+      )
+
+      if (!response.ok) {
+        throw new Error('Scenario execution failed.')
+      }
+
+      const data: WorkflowResult = await response.json()
+      setResult(data)
+    } catch {
+      setError('Unable to execute the workflow. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  async function runMissingContactTest() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    const now = new Date().toISOString()
+
+    const testPayload = {
+      lead: {
+        lead_id: 'LEAD-TEST-MISSING-001',
+        source: 'Website',
+        created_at: now,
+        last_contact_at: now,
+        declared_need: 'Airline booking assistance',
+        stage: 'New',
+        contact_available: false,
+        pending_follow_up: false,
+        follow_up_due_at: null,
+      },
+      engagement_events: [],
+    }
+
+    try {
+      const response = await fetch('/api/leads/prioritize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testPayload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Missing-contact test failed.')
+      }
+
+      const data: WorkflowResult = await response.json()
+      setResult(data)
+    } catch {
+      setError('Unable to execute the missing-contact test. Please check the backend.')
+    } finally {
+      setLoading(false)
+    }
+  }
+  const context = result?.workflow_context
+  const executedOutputs = context?.agent_outputs ?? {}
+  const executedAgentKeys = Object.keys(executedOutputs)
+
+  const leadFields = [
+    ['Lead ID', 'lead_id'],
+    ['Source', 'source'],
+    ['Created At', 'created_at'],
+    ['Last Contact', 'last_contact_at'],
+    ['Declared Need', 'declared_need'],
+    ['Stage', 'stage'],
+    ['Contact Available', 'contact_available'],
+    ['Pending Follow-up', 'pending_follow_up'],
+    ['Follow-up Due', 'follow_up_due_at'],
+  ]
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-mark">A</div>
+          <div>
+            <h1>APEX</h1>
+            <p>Lead Intelligence Platform</p>
+          </div>
+        </div>
+        <div className="system-status">
+          <span className="status-dot" />
+          Deterministic Engine
+        </div>
+      </header>
+
+      <section className="page-content">
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">SALES OPERATIONS / INTELLIGENCE</p>
+            <h2>Lead Follow-up Prioritization Intelligence</h2>
+            <p className="subtitle">
+              Transparent, evidence-based lead prioritization through a coordinated agent workflow.
+            </p>
+          </div>
+          <div className="version-tag">AA007 · PHASE 2</div>
+        </div>
+
+        <section className="scenario-panel">
+          <div className="section-heading">
+            <div>
+              <h3>Workflow Scenarios</h3>
+              <p>Select a sample lead to evaluate its follow-up priority.</p>
+            </div>
+            <span className="scenario-count">03 SCENARIOS</span>
+          </div>
+
+          <div className="scenario-grid">
+            {Object.entries(scenarios).map(([key, scenario]) => (
+              <button
+                key={key}
+                className={`scenario-card ${selectedScenario === key ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelectedScenario(key)
+                  setResult(null)
+                  setError('')
+                }}
+              >
+                <span className="scenario-name">{key.toUpperCase()}</span>
+                <strong>{scenario.lead_id}</strong>
+                <span className="scenario-description">
+                  {scenario.description}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="run-row">
+            <span>Run the selected lead through the workflow.</span>
+            <button
+              className="run-button"
+              onClick={runScenario}
+              disabled={loading || !scenarios[selectedScenario]}
+            >
+              {loading ? 'Running workflow...' : 'Run Prioritization'}
+              <span>→</span>
+            </button>
+          </div>
+        </section>
+        <section className="scenario-panel">
+          <div className="section-heading">
+            <div>
+              <h3>Mandatory Data Validation Test</h3>
+              <p>
+                Test how the Lead Intake Agent handles a lead with missing contact information.
+              </p>
+            </div>
+            <span className="scenario-count">EDGE CASE</span>
+          </div>
+
+          <div className="run-row">
+            <span>
+              Test input: LEAD-TEST-MISSING-001 · Contact Available: No
+            </span>
+            <button
+              className="run-button"
+              onClick={runMissingContactTest}
+              disabled={loading}
+            >
+              {loading ? 'Running test...' : 'Run REQUEST_DATA Test'}
+              <span>→</span>
+            </button>
+          </div>
+        </section>
+        {error && <div className="error-message">{error}</div>}
+
+        {result && context && (
+          <>
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">WORKFLOW RESULT</p>
+                  <h3>Priority Recommendation</h3>
+                </div>
+                <span className="completed-tag">COMPLETED</span>
+              </div>
+
+              <div className="result-grid">
+                <div className="recommendation-card">
+                  <span className="metric-label">RECOMMENDED ACTION</span>
+                  <h2>
+                    {actionLabels[result.recommendation.action] || result.recommendation.action}
+                  </h2>
+                  <p>{result.recommendation.reasons.join(' ')}</p>
+                </div>
+
+                <div className="score-card">
+                  <span className="metric-label">PRIORITY SCORE</span>
+                  <div className="score-value">
+                    {result.recommendation.priority_score}
+                    <small>/100</small>
+                  </div>
+                  <div className="score-track">
+                    <div
+                      className="score-fill"
+                      style={{
+                        width: `${Math.min(result.recommendation.priority_score, 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="breakdown-section">
+                <h4>Score Breakdown</h4>
+                <div className="breakdown-grid">
+                  {Object.entries(result.explanation.score_breakdown).map(
+                    ([name, score]) => (
+                      <div className="breakdown-item" key={name}>
+                        <span>{name}</span>
+                        <strong>{score}</strong>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div className="rules-section">
+                <h4>Triggered Business Rules</h4>
+                <div className="rule-list">
+                  {result.recommendation.triggered_rules.length > 0 ? (
+                    result.recommendation.triggered_rules.map((rule) => (
+                      <span className="rule-tag" key={rule}>{rule}</span>
+                    ))
+                  ) : (
+                    <span className="muted-text">No rules recorded.</span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">01 / BUSINESS INPUT</p>
+                  <h3>Lead Record & Engagement</h3>
+                  <p>The input supplied to this workflow execution.</p>
+                </div>
+              </div>
+
+              <div className="input-grid">
+                {leadFields.map(([label, key]) => {
+                  const value = context.lead_record[key]
+                  const displayValue =
+                    key.endsWith('_at') ? formatDate(value) : formatValue(value)
+
+                  return (
+                    <div className="data-item" key={key}>
+                      <span>{label}</span>
+                      <strong>{displayValue}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <h4>Engagement Events ({context.engagement_events.length})</h4>
+              {context.engagement_events.length > 0 ? (
+                <div className="event-list">
+                  {context.engagement_events.map((event, index) => (
+                    <div className="event-row" key={String(event.event_id ?? index)}>
+                      <strong>{formatValue(event.event_type)}</strong>
+                      <span>{formatValue(event.event_id)}</span>
+                      <small>{formatDate(event.occurred_at)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-text">No engagement events supplied.</p>
+              )}
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">02 / SHARED CONTEXT</p>
+                  <h3>Run-Scoped Shared Workflow Context</h3>
+                  <p>
+                    A shared context created for this workflow run and updated as agents execute.
+                  </p>
+                </div>
+                <span className="scenario-count">RUN-SCOPED</span>
+              </div>
+
+              <div className="context-meta">
+                <div className="data-item">
+                  <span>Workflow ID</span>
+                  <strong>{context.workflow_id}</strong>
+                </div>
+                <div className="data-item">
+                  <span>Started At</span>
+                  <strong>{formatDate(context.started_at)}</strong>
+                </div>
+              </div>
+
+              <div className="context-grid">
+                <div className="context-item">
+                  <span>Normalized Lead Snapshot</span>
+                  <strong>{context.validated_lead ? 'Available' : 'Not available'}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Recency Score</span>
+                  <strong>{formatValue(context.recency_score)}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Engagement Score</span>
+                  <strong>{formatValue(context.engagement_score)}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Fit Score</span>
+                  <strong>{formatValue(context.fit_score)}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Agent Outputs</span>
+                  <strong>{executedAgentKeys.length} recorded</strong>
+                </div>
+                <div className="context-item">
+                  <span>Workflow Errors</span>
+                  <strong>{context.errors.length}</strong>
+                </div>
+              </div>
+
+              <h4>Execution Summary</h4>
+              <div className="context-updates">
+                <div><span>01</span> Lead record and engagement events initialized</div>
+                <div>
+                  <span>02</span>
+                  Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
+                </div>
+                <div><span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context</div>
+                <div><span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}</div>
+                <div><span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}</div>
+              </div>
+
+              <p className="muted-text context-note">
+                This context belongs to one workflow execution. It is not permanent or long-term memory.
+              </p>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">03 / AGENT EXECUTION</p>
+                  <h3>Agent Workflow Timeline</h3>
+                  <p>Only agents with recorded outputs are shown as executed.</p>
+                </div>
+                <span className="scenario-count">
+                  {executedAgentKeys.length} EXECUTED
+                </span>
+              </div>
+
+              <div className="workflow-line">
+                {agentOrder.map((key, index) => {
+                  const output = executedOutputs[key]
+                  const definition = agentDefinitions[key]
+
+                  return (
+                    <article className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`} key={key}>
+                      <div className="agent-card-heading">
+                        <span className="agent-number">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div>
+                          <h4>{definition.responsibility.split('.')[0]}</h4>
+                          <p>{definition.responsibility}</p>
+                        </div>
+                        <span className={output ? 'agent-status' : 'agent-skipped-status'}>
+                          {output ? 'Executed' : 'Not executed'}
+                        </span>
+                      </div>
+
+                      <div className="agent-detail-grid">
+                        <div>
+                          <span>Important Input</span>
+                          <strong>{definition.input}</strong>
+                        </div>
+                        <div>
+                          <span>Output</span>
+                          {output ? (
+                            <strong>{output.agent_name}</strong>
+                          ) : (
+                            <strong>None recorded</strong>
+                          )}
+                        </div>
+                      </div>
+
+                      {output && (
+                        <>
+                          <h5>Structured Output</h5>
+                          <pre className="json-output">
+                            {JSON.stringify(output, null, 2)}
+                          </pre>
+                        </>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">04 / DECISION EVIDENCE</p>
+                  <h3>Rules, Scores & Evidence</h3>
+                </div>
+              </div>
+
+              <h4>SLA Flags</h4>
+              <div className="rule-list">
+                {context.sla_flags.length > 0 ? (
+                  context.sla_flags.map((flag) => (
+                    <span className="rule-tag" key={flag}>{flag}</span>
+                  ))
+                ) : (
+                  <span className="muted-text">No SLA flags recorded.</span>
+                )}
+              </div>
+
+              <h4>Decision Reasons</h4>
+              <ul className="reason-list">
+                {result.explanation.reasons.map((reason, index) => (
+                  <li key={index}>{reason}</li>
+                ))}
+              </ul>
+
+              <h4>Explanation</h4>
+              <p className="explanation-text">{result.explanation.summary}</p>
+
+              {result.explanation.limitations.length > 0 && (
+                <>
+                  <h4>Limitations and Errors</h4>
+                  <ul className="reason-list">
+                    {result.explanation.limitations.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+
+            <section className="audit-panel">
+              <div>
+                <p className="eyebrow">05 / AUDIT TRAIL</p>
+                <h3>Workflow Traceability</h3>
+                <p className="subtitle">
+                  Recorded execution details from the in-memory audit service.
+                </p>
+              </div>
+
+              <div className="audit-details">
+                <div>
+                  <span>Workflow ID</span>
+                  <strong>{result.workflow_id}</strong>
+                </div>
+                <div>
+                  <span>Audit Reference</span>
+                  <strong>{result.audit_reference}</strong>
+                </div>
+                <div>
+                  <span>Lead ID</span>
+                  <strong>{result.lead_id}</strong>
+                </div>
+                <div>
+                  <span>Audit Timestamp</span>
+                  <strong>{result.audit_record ? formatDate(result.audit_record.timestamp) : 'Not available'}</strong>
+                </div>
+                <div>
+                  <span>Recorded Agent Sequence</span>
+                  <strong>
+                    {result.audit_record?.agent_sequence.join(' → ') || 'No agents recorded'}
+                  </strong>
+                </div>
+                <div>
+                  <span>Audit Storage</span>
+                  <strong>In-memory · Process-local</strong>
+                </div>
+              </div>
+
+              {result.audit_record && (
+                <>
+                  <h4>Execution Trace & LLM Metadata</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(
+                      result.audit_record.execution_trace,
+                      null,
+    2
+                    )}
+                  </pre>
+                  <h4>Recorded Recommendation</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(result.audit_record.final_recommendation, null, 2)}
+                  </pre>
+
+                  <h4>Recorded Agent Outputs</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(result.audit_record.agent_outputs, null, 2)}
+                  </pre>
+                </>
+              )}
+
+              {result.errors.length > 0 && (
+                <p
+                  className={
+                    result.recommendation.action === 'REQUEST_DATA'
+                      ? 'validation-message'
+                      : 'error-message'
+                  }
+                >
+                  {result.errors.join(', ')}
+                </p>
+              )}
+            </section>
+          </>
+        )}
+
+        {!result && !loading && !error && (
+          <div className="empty-state">
+            <div className="empty-icon">↗</div>
+            <h3>Ready to evaluate leads</h3>
+            <p>
+              Select a scenario and run prioritization to explore the business input,
+              shared workflow context, agent outputs, decision evidence and audit trail.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <footer className="footer">
+        <span>AA007 · Lead Follow-up Prioritization Intelligence</span>
+        <span>Transparent rules · Explainable decisions</span>
+      </footer>
+    </main>
+  )
+}
+
+export default App
+</file>
+
+<file path="backups/phase-3-1/App.css">
+:root {
+  --navy: #080f1e;
+  --surface: #111d32;
+  --surface-raised: #1a2945;
+  --surface-soft: #202f4b;
+  --gold: #d5a62e;
+  --gold-light: #e8c45f;
+  --gold-soft: rgba(213, 166, 46, 0.13);
+  --text: #f5f3ed;
+  --muted: #aab6c9;
+  --border: #34445f;
+  --success: #72c6a0;
+  --danger: #e58d8d;
+  --shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--navy);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--gold-light);
+  outline-offset: 3px;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(213, 166, 46, 0.07), transparent 55%),
+    var(--navy);
+}
+
+/* Header */
+
+.topbar {
+  min-height: 78px;
+  padding: 15px max(5%, calc((100% - 1280px) / 2));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: rgba(6, 12, 24, 0.96);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.brand-mark {
+  width: 43px;
+  height: 43px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 11px;
+  background: var(--gold);
+  color: var(--navy);
+  font-size: 23px;
+  font-weight: 850;
+  box-shadow: 0 5px 18px rgba(213, 166, 46, 0.16);
+}
+
+.brand h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 850;
+  letter-spacing: 2px;
+}
+
+.brand p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 10px rgba(114, 198, 160, 0.4);
+}
+
+/* Main page */
+
+.page-content {
+  width: min(1200px, 90%);
+  margin: 0 auto;
+  padding: 43px 0 68px;
+}
+
+.welcome-section {
+  margin-bottom: 30px;
+  padding: 8px 0 5px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+
+.welcome-section h2 {
+  max-width: 760px;
+  margin: 8px 0 12px;
+  color: var(--text);
+  font-size: clamp(29px, 4vw, 40px);
+  line-height: 1.18;
+  letter-spacing: -1.2px;
+}
+
+.subtitle {
+  max-width: 760px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.version-tag,
+.scenario-count {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--gold);
+  background: var(--surface);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+/* Panels */
+
+.scenario-panel,
+.result-panel {
+  min-width: 0;
+  margin-bottom: 22px;
+  padding: 25px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 21px;
+}
+
+.section-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 19px;
+  line-height: 1.4;
+}
+
+.section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.muted-text {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+/* Lead selection */
+
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.scenario-card {
+  min-width: 0;
+  padding: 17px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.2s;
+}
+
+.scenario-card:hover {
+  border-color: var(--gold);
+  transform: translateY(-2px);
+}
+
+.scenario-card.selected {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.scenario-name {
+  color: var(--gold);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 1px;
+}
+
+.scenario-card strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.scenario-description {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.scenario-select {
+  width: 100%;
+  min-height: 43px;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.scenario-select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.run-row {
+  margin-top: 21px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 17px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.run-button {
+  min-height: 44px;
+  padding: 0 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--gold);
+  color: #111827;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.2s;
+}
+
+.run-button:hover:not(:disabled) {
+  background: var(--gold-light);
+  transform: translateY(-1px);
+}
+
+.run-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Recommendation */
+
+.business-result {
+  border-color: rgba(213, 166, 46, 0.38);
+}
+
+.completed-tag {
+  flex-shrink: 0;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: rgba(114, 198, 160, 0.12);
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(220px, 0.8fr);
+  gap: 15px;
+}
+
+.recommendation-card,
+.score-card {
+  min-width: 0;
+  padding: 23px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-raised);
+}
+
+.recommendation-card {
+  border-left: 4px solid var(--gold);
+}
+
+.metric-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.recommendation-card h2 {
+  margin: 13px 0 10px;
+  color: var(--gold);
+  font-size: clamp(23px, 3vw, 31px);
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.recommendation-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.recommendation-context {
+  margin-top: 15px;
+  padding: 12px 14px;
+  border: 1px solid rgba(213, 166, 46, 0.25);
+  border-radius: 8px;
+  background: var(--gold-soft);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.score-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.score-value {
+  margin: 15px 0;
+  color: var(--gold);
+  font-size: 45px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.score-value small {
+  margin-left: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.score-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 20px;
+  background: #34445f;
+}
+
+.score-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #b78a1e, var(--gold-light));
+  transition: width 0.4s ease;
+}
+
+.score-caption {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+/* Next action */
+
+.next-action-card {
+  margin-top: 16px;
+  padding: 19px 21px;
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  border: 1px solid rgba(213, 166, 46, 0.35);
+  border-radius: 10px;
+  background: linear-gradient(110deg, var(--gold-soft), rgba(26, 41, 69, 0.8));
+}
+
+.next-action-icon {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--gold);
+  color: var(--navy);
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.next-action-card > div:last-child {
+  min-width: 0;
+}
+
+.next-action-card strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Evidence and score breakdown */
+
+.evidence-section,
+.breakdown-section,
+.rules-section,
+.limitations-section {
+  margin-top: 25px;
+}
+
+.result-panel h4 {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.reason-list {
+  margin: 0;
+  padding-left: 21px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.reason-list li {
+  padding-left: 4px;
+  margin-bottom: 4px;
+}
+
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.breakdown-item {
+  min-width: 0;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: capitalize;
+}
+
+.breakdown-item strong {
+  color: var(--gold);
+  font-size: 14px;
+}
+
+.rule-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.rule-tag {
+  padding: 7px 11px;
+  border: 1px solid rgba(213, 166, 46, 0.4);
+  border-radius: 6px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 11px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.limitations-section {
+  padding: 15px 17px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(26, 41, 69, 0.55);
+}
+
+/* Lead information */
+
+.input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.data-item {
+  min-width: 0;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.data-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.data-item strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.event-list {
+  display: grid;
+  gap: 9px;
+}
+
+.event-row {
+  padding: 13px 15px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.event-row strong {
+  color: var(--gold);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.event-row span,
+.event-row small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* Advanced details */
+
+.advanced-details {
+  margin: 24px 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: rgba(17, 29, 50, 0.8);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.advanced-toggle {
+  min-height: 59px;
+  padding: 17px 21px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.2s;
+}
+
+.advanced-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-toggle::after {
+  content: "+";
+  color: var(--gold);
+  font-size: 21px;
+  font-weight: 500;
+}
+
+.advanced-details[open] > .advanced-toggle {
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.advanced-details[open] > .advanced-toggle::after {
+  content: "−";
+}
+
+.advanced-content {
+  padding: 22px;
+}
+
+.advanced-section {
+  min-width: 0;
+  margin-bottom: 27px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.advanced-section:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.advanced-section h4 {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.context-meta,
+.context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  margin-bottom: 13px;
+}
+
+.context-item {
+  min-width: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.context-item span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.context-item strong {
+  color: var(--gold);
+  font-size: 17px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.context-updates {
+  display: grid;
+  gap: 9px;
+}
+
+.context-updates div {
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.context-updates span {
+  flex-shrink: 0;
+  color: var(--gold);
+  font-weight: 850;
+}
+
+.context-note {
+  margin-top: 13px;
+}
+
+/* Agent workflow */
+
+.workflow-line {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-card {
+  min-width: 0;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-raised);
+}
+
+.agent-executed {
+  border-left: 3px solid var(--success);
+}
+
+.agent-skipped {
+  border-left: 3px solid #68758a;
+  opacity: 0.75;
+}
+
+.agent-card-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+}
+
+.agent-number {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.agent-card-heading > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-card-heading h4 {
+  margin: 3px 0 5px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.agent-card-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.agent-status {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  border-radius: 20px;
+  background: rgba(114, 198, 160, 0.12);
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.agent-skipped-status {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.json-output {
+  max-width: 100%;
+  margin: 10px 0 0;
+  padding: 15px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #080f1e;
+  color: #d6dfec;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Audit */
+
+.audit-section {
+  background: transparent;
+}
+
+.audit-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.audit-details > div {
+  min-width: 0;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.audit-details span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.audit-details strong {
+  color: var(--text);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* Messages and empty states */
+
+.error-message {
+  margin: 18px 0;
+  padding: 13px 16px;
+  border: 1px solid rgba(229, 141, 141, 0.4);
+  border-radius: 8px;
+  background: rgba(229, 141, 141, 0.1);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.empty-state {
+  padding: 55px 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.empty-icon {
+  width: 47px;
+  height: 47px;
+  margin: 0 auto 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 23px;
+}
+
+.empty-state h3 {
+  margin: 0 0 9px;
+  color: var(--text);
+  font-size: 17px;
+}
+
+.empty-state p {
+  max-width: 570px;
+  margin: 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Footer */
+
+.footer {
+  min-height: 65px;
+  padding: 18px max(5%, calc((100% - 1280px) / 2));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  border-top: 1px solid var(--border);
+  background: #060c18;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Tablet */
+
+@media (max-width: 850px) {
+  .page-content {
+    width: 92%;
+    padding-top: 32px;
+  }
+
+  .scenario-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .result-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .input-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .breakdown-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Mobile */
+
+@media (max-width: 560px) {
+  .topbar {
+    min-height: 69px;
+    padding: 12px 4%;
+  }
+
+  .brand {
+    gap: 9px;
+  }
+
+  .brand-mark {
+    width: 37px;
+    height: 37px;
+    font-size: 19px;
+  }
+
+  .brand h1 {
+    font-size: 17px;
+  }
+
+  .brand p {
+    font-size: 10px;
+  }
+
+  .system-status {
+    gap: 6px;
+    font-size: 9px;
+  }
+
+  .page-content {
+    width: 92%;
+    padding: 26px 0 43px;
+  }
+
+  .welcome-section h2 {
+    font-size: 28px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .page-heading,
+  .section-heading {
+    flex-direction: column;
+  }
+
+  .scenario-panel,
+  .result-panel {
+    padding: 17px;
+    border-radius: 10px;
+  }
+
+  .scenario-grid,
+  .result-grid,
+  .input-grid,
+  .context-grid,
+  .context-meta,
+  .breakdown-grid,
+  .audit-details {
+    grid-template-columns: 1fr;
+  }
+
+  .run-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .run-button {
+    width: 100%;
+  }
+
+  .recommendation-card,
+  .score-card {
+    padding: 19px;
+  }
+
+  .score-value {
+    font-size: 39px;
+  }
+
+  .next-action-card {
+    align-items: flex-start;
+    padding: 16px;
+  }
+
+  .next-action-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .event-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .advanced-toggle {
+    padding: 15px;
+  }
+
+  .advanced-content {
+    padding: 15px;
+  }
+
+  .agent-card-heading {
+    flex-wrap: wrap;
+  }
+
+  .agent-status,
+  .agent-skipped-status {
+    margin-left: 45px;
+  }
+
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px 4%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+</file>
+
+<file path="backups/phase-3-1/App.tsx">
+import { useEffect, useState } from 'react'
+import './App.css'
+
+type Scenario = {
+  description: string
+  lead_id: string
+}
+
+type Scenarios = Record<string, Scenario>
+
+type AgentOutput = {
+  agent_name: string
+  status?: string
+  validated_lead?: Record<string, unknown> | null
+  errors?: string[]
+  score?: number
+  days_since_last_contact?: number | null
+  event_count?: number
+  recognized_events?: string[]
+  reason?: string
+  fit_score?: number
+  sla_flags?: string[]
+  priority_score?: number
+  action?: string
+  triggered_rules?: string[]
+  reasons?: string[]
+}
+
+type Recommendation = {
+  priority_score: number
+  action: string
+  triggered_rules: string[]
+  reasons: string[]
+}
+
+type WorkflowContext = {
+  workflow_id: string
+  started_at: string
+  lead_record: Record<string, unknown>
+  engagement_events: Array<Record<string, unknown>>
+  validated_lead: Record<string, unknown> | null
+  recency_score: number | null
+  engagement_score: number | null
+  fit_score: number | null
+  sla_flags: string[]
+  agent_outputs: Record<string, AgentOutput>
+  final_recommendation: Recommendation | null
+  explanation: Record<string, unknown> | null
+  audit_reference: string | null
+  errors: string[]
+}
+
+type AuditRecord = {
+  audit_reference: string
+  workflow_id: string
+  timestamp: string
+  lead_id: string
+  agent_sequence: string[]
+  agent_outputs: Record<string, AgentOutput>
+  triggered_rules: string[]
+  final_recommendation: Recommendation
+  execution_trace: Array<{
+    node: string
+    status: string
+    provider?: string
+    model?: string
+    reason?: string
+    route?: string
+    condition?: string
+  }>
+  errors: string[]
+}
+
+type WorkflowResult = {
+  workflow_id: string
+  scenario?: string
+  lead_id: string
+  recommendation: Recommendation
+  explanation: {
+    summary: string
+    executed_agents: string[]
+    score_breakdown: {
+      recency: number | null
+      engagement: number | null
+      fit: number | null
+    }
+    triggered_rules: string[]
+    reasons: string[]
+    limitations: string[]
+  }
+  audit_reference: string
+  workflow_context: WorkflowContext
+  audit_record: AuditRecord | null
+  errors: string[]
+}
+
+const actionLabels: Record<string, string> = {
+  FOLLOW_UP_NOW: 'Follow up now',
+  FOLLOW_UP_SOON: 'Follow up soon',
+  NURTURE: 'Add to nurture',
+  REQUEST_DATA: 'Request missing data',
+}
+
+const actionDescriptions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'This lead needs prompt attention. Review the available evidence and arrange the next follow-up.',
+  FOLLOW_UP_SOON:
+    'This lead should remain in the active follow-up queue. Schedule the next contact soon.',
+  NURTURE:
+    'This lead is better suited to continued engagement. Keep it in the nurture process and review it later.',
+  REQUEST_DATA:
+    'Some mandatory lead information is missing. Complete the required information before prioritization can continue.',
+}
+
+const nextActions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'Contact the lead as soon as practical. Review the declared need and agree on the next step.',
+  FOLLOW_UP_SOON:
+    'Schedule a follow-up within your team’s normal response window and keep the lead on the active list.',
+  NURTURE:
+    'Add the lead to the appropriate nurture queue and plan a future engagement review.',
+  REQUEST_DATA:
+    'Ask the responsible team member to provide the missing contact or lead information, then reassess.',
+}
+
+const agentDefinitions: Record<string, string> = {
+  lead_intake: 'Validates mandatory lead fields and normalizes lead information.',
+  recency: 'Evaluates how recently the lead was contacted.',
+  engagement: 'Scores recognized business engagement events.',
+  fit_sla: 'Evaluates declared business need and pending follow-up SLA.',
+  lead_priority: 'Combines agent scores and business rules into a recommendation.',
+}
+
+const agentOrder = [
+  'lead_intake',
+  'recency',
+  'engagement',
+  'fit_sla',
+  'lead_priority',
+]
+
+const leadFields = [
+  ['Lead ID', 'lead_id'],
+  ['Lead source', 'source'],
+  ['Created date', 'created_at'],
+  ['Last contact', 'last_contact_at'],
+  ['Declared need', 'declared_need'],
+  ['Lead stage', 'stage'],
+  ['Contact available', 'contact_available'],
+  ['Pending follow-up', 'pending_follow_up'],
+  ['Follow-up due', 'follow_up_due_at'],
+]
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') {
+    return 'Not provided'
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+
+  return String(value)
+}
+
+function formatDate(value: unknown): string {
+  if (!value || typeof value !== 'string') return 'Not provided'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString()
+}
+
+function App() {
+  const [scenarios, setScenarios] = useState<Scenarios>({})
+  const [selectedScenario, setSelectedScenario] = useState('hot')
+  const [result, setResult] = useState<WorkflowResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadScenarios() {
+      try {
+        const response = await fetch('/api/leads/scenarios')
+
+        if (!response.ok) {
+          throw new Error('Unable to load scenarios.')
+        }
+
+        const data: Scenarios = await response.json()
+        setScenarios(data)
+      } catch {
+        setError(
+          'Could not connect to the backend. Please check that the API server is running.',
+        )
+      }
+    }
+
+    loadScenarios()
+  }, [])
+
+  async function runScenario() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    try {
+      const response = await fetch(
+        `/api/leads/scenarios/${selectedScenario}/run`,
+        { method: 'POST' },
+      )
+
+      if (!response.ok) {
+        throw new Error('Scenario execution failed.')
+      }
+
+      const data: WorkflowResult = await response.json()
+      setResult(data)
+    } catch {
+      setError('Unable to evaluate this lead. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function runMissingContactTest() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    const now = new Date().toISOString()
+
+    const testPayload = {
+      lead: {
+        lead_id: 'LEAD-TEST-MISSING-001',
+        source: 'Website',
+        created_at: now,
+        last_contact_at: now,
+        declared_need: 'Airline booking assistance',
+        stage: 'New',
+        contact_available: false,
+        pending_follow_up: false,
+        follow_up_due_at: null,
+      },
+      engagement_events: [],
+    }
+
+    try {
+      const response = await fetch('/api/leads/prioritize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testPayload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Validation test failed.')
+      }
+
+      const data: WorkflowResult = await response.json()
+      setResult(data)
+    } catch {
+      setError(
+        'Unable to execute the validation test. Please check the backend.',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const context = result?.workflow_context
+  const executedOutputs = context?.agent_outputs ?? {}
+  const executedAgentKeys = Object.keys(executedOutputs)
+  const action = result?.recommendation.action ?? ''
+  const isRequestData = action === 'REQUEST_DATA'
+
+  function clearResult() {
+    setResult(null)
+    setError('')
+  }
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-mark">A</div>
+          <div>
+            <h1>APEX</h1>
+            <p>Lead Intelligence Platform</p>
+          </div>
+        </div>
+
+        <div className="system-status">
+          <span className="status-dot" />
+          <span>Decision engine available</span>
+        </div>
+      </header>
+
+      <section className="page-content">
+        <section className="welcome-section">
+          <div>
+            <p className="eyebrow">SALES OPERATIONS</p>
+            <h2>Lead prioritization</h2>
+            <p className="subtitle">
+              Identify which leads need attention, understand why, and plan
+              your team's next action.
+            </p>
+          </div>
+
+          <div className="version-tag">AA007 · APEX</div>
+        </section>
+
+        <section className="scenario-panel">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">LEAD WORKSPACE</p>
+              <h3>Select a lead to evaluate</h3>
+              <p>
+                Choose a sample business scenario to see its follow-up
+                recommendation.
+              </p>
+            </div>
+
+            <span className="scenario-count">
+              {Object.keys(scenarios).length} SAMPLE LEADS
+            </span>
+          </div>
+
+          {Object.keys(scenarios).length > 0 ? (
+            <div className="scenario-grid">
+              {Object.entries(scenarios).map(([key, scenario]) => (
+                <button
+                  key={key}
+                  className={`scenario-card ${
+                    selectedScenario === key ? 'selected' : ''
+                  }`}
+                  onClick={() => {
+                    setSelectedScenario(key)
+                    clearResult()
+                  }}
+                  disabled={loading}
+                >
+                  <span className="scenario-name">
+                    {key.replace(/_/g, ' ').toUpperCase()}
+                  </span>
+                  <strong>{scenario.lead_id}</strong>
+                  <span className="scenario-description">
+                    {scenario.description}
+                  </span>
+                  <span className="scenario-select">
+                    {selectedScenario === key ? 'Selected ✓' : 'Select lead'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="muted-text">
+              {error
+                ? 'Sample leads could not be loaded.'
+                : 'Loading sample leads...'}
+            </p>
+          )}
+
+          <div className="run-row">
+            <span>
+              Evaluate the selected lead using the APEX prioritization
+              workflow.
+            </span>
+
+            <button
+              className="run-button"
+              onClick={runScenario}
+              disabled={loading || !scenarios[selectedScenario]}
+            >
+              {loading ? 'Evaluating lead...' : 'Prioritize lead'}
+              <span>→</span>
+            </button>
+          </div>
+        </section>
+
+        {error && (
+          <div className="error-message" role="alert">
+            {error}
+          </div>
+        )}
+
+        {loading && (
+          <div className="empty-state loading-state">
+            <div className="empty-icon">↗</div>
+            <h3>Evaluating lead</h3>
+            <p>
+              The prioritization workflow is reviewing the available lead
+              information and business evidence.
+            </p>
+          </div>
+        )}
+
+        {result && context && (
+          <>
+            <section className="result-panel business-result">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">YOUR LEAD ASSESSMENT</p>
+                  <h3>Recommended next step</h3>
+                  <p>
+                    A business recommendation based on the supplied lead
+                    information and recorded evidence.
+                  </p>
+                </div>
+
+                <span className="completed-tag">EVALUATION COMPLETE</span>
+              </div>
+
+              <div className="result-grid">
+                <div className={`recommendation-card ${isRequestData ? 'recommendation-warning' : ''}`}>
+                  <span className="metric-label">APEX RECOMMENDS</span>
+                  <h2>{actionLabels[action] || action}</h2>
+                  <p>
+                    {result.explanation.summary ||
+                      actionDescriptions[action] ||
+                      'Review the recommendation and supporting evidence.'}
+                  </p>
+                  <div className="recommendation-context">
+                    {actionDescriptions[action]}
+                  </div>
+                </div>
+
+                <div className="score-card">
+                  <span className="metric-label">PRIORITY SCORE</span>
+                  <div className="score-value">
+                    {result.recommendation.priority_score}
+                    <small>/100</small>
+                  </div>
+                  <div className="score-track">
+                    <div
+                      className="score-fill"
+                      style={{
+                        width: `${Math.max(
+                          0,
+                          Math.min(result.recommendation.priority_score, 100),
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="score-caption">
+                    Deterministic assessment score
+                  </p>
+                </div>
+              </div>
+
+              <div className="next-action-card">
+                <div className="next-action-icon">→</div>
+                <div>
+                  <span className="metric-label">SUGGESTED NEXT ACTION</span>
+                  <h4>{actionLabels[action] || 'Review lead'}</h4>
+                  <p>
+                    {nextActions[action] ||
+                      'Review the available lead information and determine the appropriate next step.'}
+                  </p>
+                </div>
+              </div>
+
+              {result.explanation.reasons.length > 0 && (
+                <div className="evidence-section">
+                  <h4>Why this recommendation?</h4>
+                  <p className="muted-text">
+                    Key business reasons recorded by the prioritization
+                    workflow.
+                  </p>
+
+                  <ul className="reason-list">
+                    {result.explanation.reasons.map((reason, index) => (
+                      <li key={index}>{reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="breakdown-section">
+                <h4>Decision score breakdown</h4>
+                <div className="breakdown-grid">
+                  {Object.entries(result.explanation.score_breakdown).map(
+                    ([name, score]) => (
+                      <div className="breakdown-item" key={name}>
+                        <span>{name}</span>
+                        <strong>{formatValue(score)}</strong>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div className="rules-section">
+                <h4>Business rules applied</h4>
+                <div className="rule-list">
+                  {result.recommendation.triggered_rules.length > 0 ? (
+                    result.recommendation.triggered_rules.map((rule) => (
+                      <span className="rule-tag" key={rule}>
+                        {rule.replace(/_/g, ' ')}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="muted-text">
+                      No specific business rules were recorded.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">LEAD INFORMATION</p>
+                  <h3>Understand the lead</h3>
+                  <p>
+                    Review the information used in this prioritization
+                    assessment.
+                  </p>
+                </div>
+              </div>
+
+              <div className="input-grid">
+                {leadFields.map(([label, key]) => {
+                  const value = context.lead_record[key]
+                  const displayValue = key.endsWith('_at')
+                    ? formatDate(value)
+                    : formatValue(value)
+
+                  return (
+                    <div className="data-item" key={key}>
+                      <span>{label}</span>
+                      <strong>{displayValue}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <h4>
+                Engagement activity ({context.engagement_events.length})
+              </h4>
+
+              {context.engagement_events.length > 0 ? (
+                <div className="event-list">
+                  {context.engagement_events.map((event, index) => (
+                    <div
+                      className="event-row"
+                      key={String(event.event_id ?? index)}
+                    >
+                      <strong>
+                        {formatValue(event.event_type).replace(/_/g, ' ')}
+                      </strong>
+                      <span>{formatValue(event.event_id)}</span>
+                      <small>{formatDate(event.occurred_at)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-text">
+                  No engagement events were supplied for this lead.
+                </p>
+              )}
+
+              {result.explanation.limitations.length > 0 && (
+                <div className="limitations-section">
+                  <h4>Assessment limitations</h4>
+                  <ul className="reason-list">
+                    {result.explanation.limitations.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+
+            <details className="advanced-details">
+              <summary>
+                <span>
+                  <strong>Advanced Details</strong>
+                  <small>
+                    Workflow execution, agent outputs, validation and audit
+                    traceability
+                  </small>
+                </span>
+                <span className="advanced-toggle">+</span>
+              </summary>
+
+              <div className="advanced-content">
+                <section className="advanced-section">
+                  <p className="eyebrow">WORKFLOW CONTEXT</p>
+                  <h3>Execution overview</h3>
+
+                  <div className="context-meta">
+                    <div className="data-item">
+                      <span>Workflow ID</span>
+                      <strong>{context.workflow_id}</strong>
+                    </div>
+                    <div className="data-item">
+                      <span>Started at</span>
+                      <strong>{formatDate(context.started_at)}</strong>
+                    </div>
+                    <div className="data-item">
+                      <span>Audit reference</span>
+                      <strong>{context.audit_reference ?? 'Not available'}</strong>
+                    </div>
+                    <div className="data-item">
+                      <span>Recorded agent outputs</span>
+                      <strong>{executedAgentKeys.length}</strong>
+                    </div>
+                  </div>
+
+                  <h4>Shared context scores</h4>
+                  <div className="context-grid">
+                    <div className="context-item">
+                      <span>Validated lead</span>
+                      <strong>
+                        {context.validated_lead ? 'Available' : 'Not available'}
+                      </strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Recency</span>
+                      <strong>{formatValue(context.recency_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Engagement</span>
+                      <strong>{formatValue(context.engagement_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Fit</span>
+                      <strong>{formatValue(context.fit_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Workflow errors</span>
+                      <strong>{context.errors.length}</strong>
+                    </div>
+                  </div>
+
+                  <h4>Execution summary</h4>
+                  <div className="context-updates">
+                    <div>
+                      <span>01</span> Lead record and engagement initialized
+                    </div>
+                    <div>
+                      <span>02</span> Lead intake:{' '}
+                      {context.agent_outputs.lead_intake?.status ??
+                        'Not recorded'}
+                    </div>
+                    <div>
+                      <span>03</span> {executedAgentKeys.length} agent output(s)
+                      recorded
+                    </div>
+                    <div>
+                      <span>04</span> Final recommendation: {action}
+                    </div>
+                    <div>
+                      <span>05</span> Audit reference:{' '}
+                      {context.audit_reference ?? 'Not available'}
+                    </div>
+                  </div>
+
+                  <p className="muted-text context-note">
+                    This shared context belongs to one workflow execution. It
+                    is not permanent or long-term memory.
+                  </p>
+                </section>
+
+                <section className="advanced-section">
+                  <p className="eyebrow">AGENT EXECUTION</p>
+                  <h3>Agent workflow timeline</h3>
+                  <p className="muted-text">
+                    Only agents with recorded outputs are shown as executed.
+                  </p>
+
+                  <div className="workflow-line">
+                    {agentOrder.map((key, index) => {
+                      const output = executedOutputs[key]
+
+                      return (
+                        <article
+                          className={`agent-card ${
+                            output ? 'agent-executed' : 'agent-skipped'
+                          }`}
+                          key={key}
+                        >
+                          <div className="agent-card-heading">
+                            <span className="agent-number">
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <div>
+                              <h4>{key.replace(/_/g, ' ')}</h4>
+                              <p>{agentDefinitions[key]}</p>
+                            </div>
+                            <span
+                              className={
+                                output
+                                  ? 'agent-status'
+                                  : 'agent-skipped-status'
+                              }
+                            >
+                              {output ? 'Executed' : 'Not executed'}
+                            </span>
+                          </div>
+
+                          {output && (
+                            <pre className="json-output">
+                              {JSON.stringify(output, null, 2)}
+                            </pre>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                <section className="advanced-section">
+                  <p className="eyebrow">VALIDATION</p>
+                  <h3>Mandatory data validation test</h3>
+                  <p className="muted-text">
+                    Test the deterministic REQUEST_DATA route using a sample
+                    lead with missing contact information.
+                  </p>
+
+                  <div className="run-row">
+                    <span>
+                      Test lead: LEAD-TEST-MISSING-001 · Contact available: No
+                    </span>
+                    <button
+                      className="run-button"
+                      onClick={runMissingContactTest}
+                      disabled={loading}
+                    >
+                      {loading ? 'Running test...' : 'Run validation test'}
+                      <span>→</span>
+                    </button>
+                  </div>
+                </section>
+
+                <section className="advanced-section audit-section">
+                  <p className="eyebrow">AUDIT TRAIL</p>
+                  <h3>Workflow traceability</h3>
+                  <p className="muted-text">
+                    Recorded execution details from the process-local
+                    in-memory audit service.
+                  </p>
+
+                  {result.audit_record ? (
+                    <>
+                      <div className="audit-details">
+                        <div>
+                          <span>Workflow ID</span>
+                          <strong>{result.workflow_id}</strong>
+                        </div>
+                        <div>
+                          <span>Audit reference</span>
+                          <strong>{result.audit_reference}</strong>
+                        </div>
+                        <div>
+                          <span>Lead ID</span>
+                          <strong>{result.lead_id}</strong>
+                        </div>
+                        <div>
+                          <span>Audit timestamp</span>
+                          <strong>
+                            {formatDate(result.audit_record.timestamp)}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Recorded agent sequence</span>
+                          <strong>
+                            {result.audit_record.agent_sequence.join(' → ') ||
+                              'No agents recorded'}
+                          </strong>
+                        </div>
+                        <div>
+                          <span>Audit storage</span>
+                          <strong>In-memory · Process-local</strong>
+                        </div>
+                      </div>
+
+                      <h4>Execution trace and LLM metadata</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.execution_trace,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Recorded recommendation</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.final_recommendation,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Recorded agent outputs</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.agent_outputs,
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </>
+                  ) : (
+                    <p className="muted-text">
+                      No audit record was returned for this execution.
+                    </p>
+                  )}
+
+                  {result.errors.length > 0 && (
+                    <div
+                      className={
+                        isRequestData
+                          ? 'validation-message'
+                          : 'error-message'
+                      }
+                    >
+                      {result.errors.join(', ')}
+                    </div>
+                  )}
+                </section>
+              </div>
+            </details>
+          </>
+        )}
+
+        {!result && !loading && !error && (
+          <div className="empty-state">
+            <div className="empty-icon">↗</div>
+            <h3>Ready to prioritize your leads</h3>
+            <p>
+              Select a sample lead above to receive a clear follow-up
+              recommendation, understand the supporting business evidence and
+              review the suggested next action.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <footer className="footer">
+        <span>APEX · Lead Intelligence Platform</span>
+        <span>Evidence-based decisions · Transparent recommendations</span>
+      </footer>
+    </main>
+  )
+}
+
+export default App
+</file>
 
 <file path="backend/app/agents/__init__.py">
 
@@ -2009,6 +5503,103 @@ class WorkflowService:
         return result["context"]
 </file>
 
+<file path="frontend/src/index.css">
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+</file>
+
+<file path="frontend/Dockerfile">
+# Stage 1: Build the React application
+FROM node:24-alpine AS builder
+
+WORKDIR /app
+
+COPY frontend/package*.json ./
+
+RUN npm ci
+
+COPY frontend/ .
+
+RUN npm run build
+
+# Stage 2: Serve the production build
+FROM nginx:alpine
+
+ENV NGINX_ENVSUBST_FILTER="^BACKEND_URL$"
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+COPY frontend/nginx.conf /etc/nginx/templates/default.conf.template
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+</file>
+
+<file path="backend/Dockerfile">
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY backend/requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app ./app
+
+EXPOSE 8002
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+</file>
+
+<file path="backend/requirements.txt">
+fastapi
+uvicorn[standard]
+pydantic
+pytest
+httpx
+langgraph==1.2.20
+google-genai
+python-dotenv
+</file>
+
 <file path="frontend/src/App.css">
 :root {
   --navy: #080f1e;
@@ -2302,6 +5893,56 @@ button {
 }
 
 .recommendation-card p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.recommendation-context {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--gold);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.next-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 20px 23px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--gold);
+  border-radius: 11px;
+  background: var(--surface-raised);
+}
+
+.next-action-icon {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #101a2c;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.next-action-card h4 {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.next-action-card p {
+  margin: 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
@@ -2801,103 +6442,6 @@ button {
     flex-direction: column;
   }
 }
-</file>
-
-<file path="frontend/src/index.css">
-:root {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  color-scheme: dark;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  min-width: 320px;
-  min-height: 100%;
-}
-
-body {
-  margin: 0;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
-
-#root {
-  width: 100%;
-  min-height: 100vh;
-}
-</file>
-
-<file path="frontend/Dockerfile">
-# Stage 1: Build the React application
-FROM node:24-alpine AS builder
-
-WORKDIR /app
-
-COPY frontend/package*.json ./
-
-RUN npm ci
-
-COPY frontend/ .
-
-RUN npm run build
-
-# Stage 2: Serve the production build
-FROM nginx:alpine
-
-ENV NGINX_ENVSUBST_FILTER="^BACKEND_URL$"
-
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-COPY frontend/nginx.conf /etc/nginx/templates/default.conf.template
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
-</file>
-
-<file path="backend/Dockerfile">
-FROM python:3.11-slim
-
-WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-COPY backend/requirements.txt .
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-COPY backend/app ./app
-
-EXPOSE 8002
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
-</file>
-
-<file path="backend/requirements.txt">
-fastapi
-uvicorn[standard]
-pydantic
-pytest
-httpx
-langgraph==1.2.20
-google-genai
-python-dotenv
 </file>
 
 <file path="frontend/nginx.conf">
@@ -3716,10 +7260,13 @@ type WorkflowResult = {
   errors: string[]
 }
 
-const agentDefinitions: Record<string, {
-  responsibility: string
-  input: string
-}> = {
+const agentDefinitions: Record<
+  string,
+  {
+    responsibility: string
+    input: string
+  }
+> = {
   lead_intake: {
     responsibility: 'Validates mandatory lead fields and normalizes lead information.',
     input: 'Lead record',
@@ -3755,6 +7302,28 @@ const actionLabels: Record<string, string> = {
   FOLLOW_UP_SOON: 'Follow Up Soon',
   NURTURE: 'Nurture',
   REQUEST_DATA: 'Request Data',
+}
+
+const actionDescriptions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'This lead needs prompt attention. Review the available evidence and arrange the next follow-up.',
+  FOLLOW_UP_SOON:
+    'This lead should remain in the active follow-up queue. Schedule the next contact soon.',
+  NURTURE:
+    'This lead is better suited to continued engagement. Keep it in the nurture process and review it later.',
+  REQUEST_DATA:
+    'Some mandatory lead information is missing. Complete the required information before prioritization can continue.',
+}
+
+const nextActions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'Contact the lead as soon as practical. Review the declared need and agree on the next step.',
+  FOLLOW_UP_SOON:
+    'Schedule a follow-up within your team’s normal response window and keep the lead on the active list.',
+  NURTURE:
+    'Add the lead to the appropriate nurture queue and plan a future engagement review.',
+  REQUEST_DATA:
+    'Ask the responsible team member to provide the missing contact or lead information, then reassess.',
 }
 
 function formatValue(value: unknown): string {
@@ -3802,7 +7371,9 @@ function App() {
         const data: Scenarios = await response.json()
         setScenarios(data)
       } catch {
-        setError('Could not connect to the backend. Please check that the API server is running.')
+        setError(
+          'Could not connect to the backend. Please check that the API server is running.',
+        )
       }
     }
 
@@ -3832,6 +7403,7 @@ function App() {
       setLoading(false)
     }
   }
+
   async function runMissingContactTest() {
     setLoading(true)
     setError('')
@@ -3870,11 +7442,14 @@ function App() {
       const data: WorkflowResult = await response.json()
       setResult(data)
     } catch {
-      setError('Unable to execute the missing-contact test. Please check the backend.')
+      setError(
+        'Unable to execute the missing-contact test. Please check the backend.',
+      )
     } finally {
       setLoading(false)
     }
   }
+
   const context = result?.workflow_context
   const executedOutputs = context?.agent_outputs ?? {}
   const executedAgentKeys = Object.keys(executedOutputs)
@@ -3960,6 +7535,7 @@ function App() {
             </button>
           </div>
         </section>
+
         <section className="scenario-panel">
           <div className="section-heading">
             <div>
@@ -3985,6 +7561,7 @@ function App() {
             </button>
           </div>
         </section>
+
         {error && <div className="error-message">{error}</div>}
 
         {result && context && (
@@ -4002,9 +7579,14 @@ function App() {
                 <div className="recommendation-card">
                   <span className="metric-label">RECOMMENDED ACTION</span>
                   <h2>
-                    {actionLabels[result.recommendation.action] || result.recommendation.action}
+                    {actionLabels[result.recommendation.action] ||
+                      result.recommendation.action}
                   </h2>
                   <p>{result.recommendation.reasons.join(' ')}</p>
+                  <div className="recommendation-context">
+                    {actionDescriptions[result.recommendation.action] ||
+                      'Review the recommendation and supporting evidence.'}
+                  </div>
                 </div>
 
                 <div className="score-card">
@@ -4017,10 +7599,27 @@ function App() {
                     <div
                       className="score-fill"
                       style={{
-                        width: `${Math.min(result.recommendation.priority_score, 100)}%`,
+                        width: `${Math.min(
+                          result.recommendation.priority_score,
+                          100,
+                        )}%`,
                       }}
                     />
                   </div>
+                </div>
+              </div>
+
+              <div className="next-action-card">
+                <div className="next-action-icon">→</div>
+                <div>
+                  <span className="metric-label">SUGGESTED NEXT ACTION</span>
+                  <h4>
+                    {actionLabels[result.recommendation.action] || 'Review lead'}
+                  </h4>
+                  <p>
+                    {nextActions[result.recommendation.action] ||
+                      'Review the available lead information and determine the appropriate next step.'}
+                  </p>
                 </div>
               </div>
 
@@ -4043,7 +7642,9 @@ function App() {
                 <div className="rule-list">
                   {result.recommendation.triggered_rules.length > 0 ? (
                     result.recommendation.triggered_rules.map((rule) => (
-                      <span className="rule-tag" key={rule}>{rule}</span>
+                      <span className="rule-tag" key={rule}>
+                        {rule}
+                      </span>
                     ))
                   ) : (
                     <span className="muted-text">No rules recorded.</span>
@@ -4080,7 +7681,10 @@ function App() {
               {context.engagement_events.length > 0 ? (
                 <div className="event-list">
                   {context.engagement_events.map((event, index) => (
-                    <div className="event-row" key={String(event.event_id ?? index)}>
+                    <div
+                      className="event-row"
+                      key={String(event.event_id ?? index)}
+                    >
                       <strong>{formatValue(event.event_type)}</strong>
                       <span>{formatValue(event.event_id)}</span>
                       <small>{formatDate(event.occurred_at)}</small>
@@ -4118,7 +7722,9 @@ function App() {
               <div className="context-grid">
                 <div className="context-item">
                   <span>Normalized Lead Snapshot</span>
-                  <strong>{context.validated_lead ? 'Available' : 'Not available'}</strong>
+                  <strong>
+                    {context.validated_lead ? 'Available' : 'Not available'}
+                  </strong>
                 </div>
                 <div className="context-item">
                   <span>Recency Score</span>
@@ -4144,14 +7750,22 @@ function App() {
 
               <h4>Execution Summary</h4>
               <div className="context-updates">
-                <div><span>01</span> Lead record and engagement events initialized</div>
+                <div>
+                  <span>01</span> Lead record and engagement events initialized
+                </div>
                 <div>
                   <span>02</span>
                   Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
                 </div>
-                <div><span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context</div>
-                <div><span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}</div>
-                <div><span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}</div>
+                <div>
+                  <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
+                </div>
+                <div>
+                  <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
+                </div>
+                <div>
+                  <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
+                </div>
               </div>
 
               <p className="muted-text context-note">
@@ -4177,7 +7791,10 @@ function App() {
                   const definition = agentDefinitions[key]
 
                   return (
-                    <article className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`} key={key}>
+                    <article
+                      className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
+                      key={key}
+                    >
                       <div className="agent-card-heading">
                         <span className="agent-number">
                           {String(index + 1).padStart(2, '0')}
@@ -4186,7 +7803,11 @@ function App() {
                           <h4>{definition.responsibility.split('.')[0]}</h4>
                           <p>{definition.responsibility}</p>
                         </div>
-                        <span className={output ? 'agent-status' : 'agent-skipped-status'}>
+                        <span
+                          className={
+                            output ? 'agent-status' : 'agent-skipped-status'
+                          }
+                        >
                           {output ? 'Executed' : 'Not executed'}
                         </span>
                       </div>
@@ -4232,7 +7853,9 @@ function App() {
               <div className="rule-list">
                 {context.sla_flags.length > 0 ? (
                   context.sla_flags.map((flag) => (
-                    <span className="rule-tag" key={flag}>{flag}</span>
+                    <span className="rule-tag" key={flag}>
+                      {flag}
+                    </span>
                   ))
                 ) : (
                   <span className="muted-text">No SLA flags recorded.</span>
@@ -4285,12 +7908,17 @@ function App() {
                 </div>
                 <div>
                   <span>Audit Timestamp</span>
-                  <strong>{result.audit_record ? formatDate(result.audit_record.timestamp) : 'Not available'}</strong>
+                  <strong>
+                    {result.audit_record
+                      ? formatDate(result.audit_record.timestamp)
+                      : 'Not available'}
+                  </strong>
                 </div>
                 <div>
                   <span>Recorded Agent Sequence</span>
                   <strong>
-                    {result.audit_record?.agent_sequence.join(' → ') || 'No agents recorded'}
+                    {result.audit_record?.agent_sequence.join(' → ') ||
+                      'No agents recorded'}
                   </strong>
                 </div>
                 <div>
@@ -4306,17 +7934,26 @@ function App() {
                     {JSON.stringify(
                       result.audit_record.execution_trace,
                       null,
-    2
+                      2,
                     )}
                   </pre>
+
                   <h4>Recorded Recommendation</h4>
                   <pre className="json-output">
-                    {JSON.stringify(result.audit_record.final_recommendation, null, 2)}
+                    {JSON.stringify(
+                      result.audit_record.final_recommendation,
+                      null,
+                      2,
+                    )}
                   </pre>
 
                   <h4>Recorded Agent Outputs</h4>
                   <pre className="json-output">
-                    {JSON.stringify(result.audit_record.agent_outputs, null, 2)}
+                    {JSON.stringify(
+                      result.audit_record.agent_outputs,
+                      null,
+                      2,
+                    )}
                   </pre>
                 </>
               )}
