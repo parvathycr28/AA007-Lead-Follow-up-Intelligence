@@ -3,7 +3,7 @@
 **Product:** APEX — Lead Intelligence Platform  
 **Case ID:** AA007  
 **Architecture Version:** 3.1  
-**Current Phase:** Phase 3.1 — Productize the Business Experience
+**Current Phase:** Phase 3.1 — Business Experience Separation & Productization
 
 ## 1. Architecture Overview
 
@@ -19,7 +19,17 @@ LangGraph manages conditional orchestration and shared workflow state. It does n
 
 The workflow records node execution statuses and router selections, including the selected route and triggering condition. The complete execution trace is copied into the audit record, including the final explanation and audit completion entry.
 
-The frontend provides a business-oriented interface for entering or selecting lead scenarios and reviewing the resulting prioritization decisions. It presents recommendation outcomes, priority scores, score breakdowns, explanatory context, suggested next actions, agent execution information, and audit references.
+The frontend provides a business-oriented interface for entering or selecting lead scenarios and reviewing the resulting prioritization decisions. The normal business-facing screen focuses on:
+
+- Lead information and engagement context.
+- Recommendation outcome and priority score.
+- Recommendation explanation and business-readable reasons.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
+
+Internal technical execution information is separated from the normal business-facing experience.
+
+A collapsed-by-default **Explainability & Audit** section provides access to the detailed technical journey when expanded. It retains the run-scoped workflow context, five-agent execution timeline, structured agent outputs, LangGraph routing and execution trace, Gemini metadata, and audit information, including raw JSON where useful.
 
 The application uses a consistent dark navy and gold visual design. The recommendation experience includes an explanation of why an outcome was selected and a suggested next action to help users understand the appropriate follow-up response.
 
@@ -51,30 +61,30 @@ LangGraph StateGraph
        |
        +--------------------+--------------------+
        |                    |                    |
-   Valid data          Missing data        Intake failure
+   Valid data          Missing data       Intake failure
        |                    |                    |
        v                    v                    v
     recency             request_data       workflow_error
        |                    |                    |
        v                    +---------+----------+
-   engagement                       |
-       |                            |
-       v                            |
-     fit_sla                        |
-       |                            |
-       v                            |
- priority_decision                  |
-       |                            |
-       v                            |
-  Priority Router                   |
-       |                            |
-       +--> overdue_follow_up       |
-       +--> high_priority           |
-       +--> follow_up_soon          |
-       +--> nurture                 |
-       +--> workflow_error          |
-       |                            |
-       +-------------+--------------+
+  engagement                        |
+       |                             |
+       v                             |
+    fit_sla                          |
+       |                             |
+       v                             |
+ priority_decision                   |
+       |                             |
+       v                             |
+  Priority Router                    |
+       |                             |
+       +--> overdue_follow_up        |
+       +--> high_priority            |
+       +--> follow_up_soon           |
+       +--> nurture                  |
+       +--> workflow_error           |
+       |                             |
+       +-------------+---------------+
                      |
                      v
              build_explanation
@@ -94,15 +104,22 @@ LangGraph StateGraph
                      v
                   Frontend
                      |
-                     v
-          Business Recommendation
-               Presentation
-                     |
           +----------+----------+
           |                     |
           v                     v
- Recommendation           Suggested Next
- Explanation                 Action
+  Business-facing        Explainability
+  Recommendation          & Audit
+  Presentation            (collapsed by
+                           default)
+          |                     |
+          v                     v
+  Lead information       Shared workflow
+  Recommendation         context
+  Priority and status    Five-agent timeline
+  Explanation            Structured outputs
+  Evidence               LangGraph trace
+  Suggested action       Gemini metadata
+                         Audit and raw JSON
 ```
 
 ### 2.1 Workflow Execution Behaviour
@@ -117,7 +134,7 @@ LangGraph StateGraph
 - **Deterministic explanation:** All outcome paths converge on `build_explanation`, which generates the original evidence-based explanation.
 - **Gemini enhancement:** `gemini_explanation` optionally rewrites the explanation using structured decision evidence. The lead identifier is excluded, and the recommendation and priority score remain unchanged.
 - **Explanation and audit:** `explanation_audit` records the complete execution trace after the Gemini result or deterministic fallback has been applied.
-- **Frontend presentation:** The frontend displays the API response as a business recommendation with supporting evidence, explanatory context, and a suggested next action.
+- **Frontend presentation:** The frontend presents the business recommendation separately from the technical workflow and audit information.
 
 ### 2.2 Conditional Routing and Execution Trace
 
@@ -188,11 +205,38 @@ The LangGraph StateGraph uses a shared workflow state to pass the lead record, e
 
 The execution trace records node names and statuses, along with router selections. Router entries include the selected `route` and triggering `condition`. The audit service copies the complete trace into the audit record so that the workflow path can be inspected alongside the recommendation and agent outputs.
 
-The frontend consumes the workflow response to present the final recommendation, supporting evidence, score information, and audit details.
+### 4.1 Frontend Access to Workflow Context
+
+The backend continues to return the workflow information required for recommendation presentation and technical inspection.
+
+The frontend separates this information into two presentation areas.
+
+**Business-facing recommendation area:**
+
+- Lead information and engagement context.
+- Final recommendation.
+- Priority score and available score breakdown.
+- Recommendation explanation.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
+
+**Explainability & Audit area:**
+
+- Run-scoped shared workflow context.
+- Agent execution timeline and statuses.
+- Structured outputs from the five agents.
+- LangGraph execution trace and selected routing conditions.
+- Gemini provider, model, execution status, and reason when available.
+- Audit reference and complete audit record.
+- Relevant raw JSON for technical inspection.
+
+The Explainability & Audit section is collapsed by default. The reviewer can expand it when technical details are required.
 
 The explanatory recommendation context and suggested next action are presentation-layer elements derived from the final recommendation. They do not change the shared workflow state or determine the business outcome.
 
-This structure supports execution inspection, route validation, and audit traceability. Audit storage remains process-local in the current MVP.
+This structure supports a focused business experience while preserving execution inspection, route validation, and audit traceability.
+
+Audit storage remains process-local in the current MVP.
 
 ## 5. Decision and Scoring Layer
 
@@ -281,6 +325,8 @@ These elements are based on the final recommendation and use predefined presenta
 
 If Gemini is unavailable, the deterministic explanation remains available. The recommendation and suggested next action continue to be presented according to the deterministic workflow outcome.
 
+Technical information about the Gemini enhancement remains accessible in the Explainability & Audit section rather than being displayed in the normal business-facing screen.
+
 ## 7. Audit Service
 
 The Audit Service records information about workflow executions, including:
@@ -298,7 +344,7 @@ The Audit Service records information about workflow executions, including:
 
 The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended. The trace includes the Gemini enhancement status and fallback reason when applicable.
 
-The frontend displays the audit information returned by the backend so that users can inspect the execution evidence associated with a recommendation.
+The frontend makes the audit information returned by the backend available through the Explainability & Audit section. This allows technical reviewers to inspect the execution evidence associated with a recommendation without exposing the full technical record in the normal business-facing experience.
 
 The recommendation explanation and suggested next action are presentation-layer elements. They do not replace the original execution trace or audit record.
 
@@ -312,23 +358,23 @@ The React and TypeScript frontend communicates with the backend through the Vite
 
 In the production deployment, the frontend uses Nginx to forward requests under `/api/` to the configured backend service. The browser communicates with the frontend origin, while Nginx handles backend routing.
 
-The frontend dashboard provides:
-
-- Lead scenario selection.
-- Business input and lead information.
-- Recommendation outcome.
-- Priority score and score breakdown.
-- Agent execution information.
-- Supporting evidence and triggered business rules.
-- Recommendation explanation.
-- Suggested next action.
-- Audit information.
-
-### 8.1 Phase 3.1 Business Recommendation Presentation
+### 8.1 Business-Facing Recommendation Presentation
 
 Phase 3.1 improves the business-facing presentation of the existing prioritization results.
 
-The original dark navy and gold visual design is retained. The recommendation experience is enhanced with an explanatory context and a dedicated suggested next action section.
+The original dark navy and gold visual design is retained. The normal application screen focuses on the information needed to understand and act on the recommendation.
+
+The business-facing screen presents:
+
+- Lead information and engagement context.
+- Recommendation outcome and priority score.
+- Recommendation explanation and business-readable reasons.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
+
+The internal agent execution timeline, shared workflow context, raw structured agent outputs, technical execution trace, Gemini metadata, and detailed audit JSON are not displayed in the normal business-facing view.
+
+### 8.2 Recommendation Outcomes
 
 The frontend supports four recommendation outcomes:
 
@@ -357,7 +403,7 @@ This lead is better suited to continued engagement. Keep it in the nurture proce
 
 Some mandatory lead information is missing. Complete the required information before prioritization can continue.
 
-### 8.2 Suggested Next Actions
+### 8.3 Suggested Next Actions
 
 The frontend displays a suggested next action based on the final deterministic recommendation.
 
@@ -370,7 +416,52 @@ The frontend displays a suggested next action based on the final deterministic r
 
 These suggestions are guidance for human users. They do not automatically contact leads, schedule activities, or modify CRM records.
 
-### 8.3 Presentation and Decision Boundaries
+### 8.4 Explainability & Audit — Advanced Technical Details
+
+The Explainability & Audit section separates technical workflow information from the normal business-facing recommendation experience.
+
+It is collapsed by default. A user or technical reviewer can expand the section when deeper execution inspection is needed.
+
+When expanded, the section provides access to:
+
+1. **Run-Scoped Shared Workflow Context**
+   - Workflow identifier and execution information.
+   - Original and validated lead information.
+   - Engagement events and analytical results.
+   - Shared workflow state and errors.
+
+2. **Five-Agent Execution Timeline**
+   - Agent execution order.
+   - Agent statuses.
+   - Individual structured outputs.
+   - Agent-specific evidence and results.
+
+3. **LangGraph Execution and Routing**
+   - Workflow node names and execution statuses.
+   - Intake router selection and condition.
+   - Priority router selection and triggering condition.
+   - Selected business outcome path.
+   - Complete execution trace.
+
+4. **Gemini Execution Information**
+   - Provider and configured model.
+   - Execution status.
+   - Execution reason or fallback information.
+   - Relevant information returned in the workflow trace.
+
+5. **Audit Information**
+   - Audit reference.
+   - Recorded recommendation.
+   - Agent execution sequence.
+   - Triggered rules.
+   - Complete audit record.
+   - Raw JSON for technical inspection.
+
+The technical information is preserved for internship evaluation, debugging, and verification of the agentic workflow implementation.
+
+The expandable section changes only how the frontend presents the information. It does not change backend execution, API responses, or workflow behavior.
+
+### 8.5 Presentation and Decision Boundaries
 
 The frontend is responsible for displaying the workflow result in a clear and business-oriented format.
 
@@ -387,7 +478,7 @@ The backend remains responsible for:
 
 The frontend does not calculate a replacement priority score or override the recommendation returned by the backend.
 
-Phase 3.1 improves the clarity and usability of the existing decision output without changing the underlying business logic.
+Phase 3.1 improves the clarity and usability of the existing decision output while keeping the full technical journey accessible through Explainability & Audit.
 
 ## 9. Docker Deployment Architecture
 
@@ -453,7 +544,7 @@ The application is deployed on Render using two independent Docker-based Web Ser
 3. The frontend makes same-origin requests under `/api/`.
 4. Nginx forwards those requests to the backend URL configured through `BACKEND_URL`.
 5. FastAPI executes the existing deterministic workflow and returns the response.
-6. The frontend displays agent outputs, shared workflow context, recommendation, explanation, suggested next action, and audit reference.
+6. The frontend presents the business recommendation and makes the detailed technical workflow information available through Explainability & Audit.
 
 ### 10.4 Environment Configuration
 
@@ -483,13 +574,13 @@ If Gemini is not configured or is unavailable, the workflow retains its determin
 - Audit records remain in process-local memory and may be lost when the backend restarts or is replaced.
 - No persistent database or external audit storage is configured.
 
-### 10.6 Phase 3.1 Production Deployment
+### 10.6 Earlier Phase 3.1 Production Deployment
 
-Phase 3.1 frontend changes were merged into the GitHub `main` branch and deployed through the existing Render services.
+The earlier Phase 3.1 recommendation experience changes were merged into the GitHub `main` branch and deployed through the existing Render services.
 
-The deployed frontend and backend were confirmed as Live after deployment.
+The deployed frontend and backend were confirmed as Live after that deployment.
 
-The production frontend was refreshed and validated against the updated recommendation experience.
+The production frontend was refreshed and validated against the recommendation experience.
 
 The following four scenarios were successfully checked on the deployed application:
 
@@ -502,7 +593,9 @@ The following four scenarios were successfully checked on the deployed applicati
 
 The recommendation explanations and suggested next actions were also verified for all four outcomes.
 
-The Phase 3.1 deployment changes the business-facing presentation of the application. It does not introduce new backend services or change the existing deterministic workflow.
+The earlier deployment changed the business-facing recommendation presentation. It did not introduce new backend services or change the existing deterministic workflow.
+
+The subsequent Explainability & Audit separation is a further frontend productization correction. Its local validation is documented in Section 14.5. Production verification of that latest correction must be performed after its corresponding deployment.
 
 ## 11. Technology and Design Constraints
 
@@ -533,7 +626,8 @@ The workflow preserves deterministic business authority:
 - The Gemini response is validated before acceptance; failures and invalid responses retain the deterministic explanation.
 - The execution trace records provider, model, status, and reason for the Gemini enhancement.
 - The complete execution trace is preserved in the audit record.
-- The frontend presents the recommendation, explanation, score information, and suggested next action.
+- The normal frontend screen focuses on the business recommendation and suggested next action.
+- The Explainability & Audit section retains access to technical workflow information.
 - The frontend does not override deterministic recommendations or calculate alternative business decisions.
 
 The following capabilities remain outside the current scope:
@@ -559,9 +653,9 @@ The controlled Gemini enhancement improves explanation readability without chang
 
 The Phase 3.1 product experience makes the resulting recommendations easier for business users to understand and act upon through explanatory context and suggested next actions.
 
-The architecture makes workflow execution, selected routes, triggering conditions, LLM execution metadata, recommendation evidence, and audit trace information observable.
+The Explainability & Audit section preserves technical transparency by making the complete workflow journey accessible when required, without placing internal execution details in the normal business-facing experience.
 
-The overall design maintains a clear separation between deterministic backend decision-making and frontend presentation.
+The overall design maintains a clear separation between deterministic backend decision-making, business-facing frontend presentation, and technical workflow inspection.
 
 ## 13. Historical Implementation — Phase 2.1 Linear Orchestration
 
@@ -655,20 +749,19 @@ Subsequent phases introduced conditional routing and controlled LLM explanation 
 
 Phase 3.1 improves the business-facing experience of APEX by making deterministic lead prioritization results easier to understand and use.
 
-The objective is to move beyond displaying a recommendation and score alone. The interface now provides business-oriented explanatory context and a suggested next action for each recommendation outcome.
+The objective is to move beyond displaying a recommendation and score alone. The interface provides business-oriented explanatory context and a suggested next action for each recommendation outcome.
 
 The enhancement preserves the original Phase 2 visual identity, including its dark navy and gold design.
 
 ### 14.2 Recommendation Experience
 
-The recommendation presentation includes:
+The business-facing recommendation presentation includes:
 
 - Final recommendation label.
 - Priority score and available score breakdown.
 - Recommendation explanation.
 - Suggested next action.
-- Supporting workflow evidence and agent outputs.
-- Audit information.
+- Supporting business evidence and triggered rules.
 
 The recommendation explanation communicates why the outcome matters to the sales team.
 
@@ -701,25 +794,53 @@ It does not:
 
 The existing API, agent responsibilities, and deterministic workflow remain the source of truth.
 
-### 14.5 Phase 3.1 Validation
+### 14.5 Business Experience Separation and Validation
 
-Phase 3.1 validation included:
+The subsequent Phase 3.1 frontend correction separates the normal business-facing recommendation experience from the technical execution and audit information.
 
-- TypeScript validation using `npx tsc --noEmit`.
-- Frontend production build using `npm run build`.
-- Docker frontend image rebuild.
-- Local Docker Compose application validation.
-- Visual confirmation of the restored dark navy and gold interface.
-- Verification of recommendation explanations and suggested next actions.
-- Testing of HOT, WARM, STALE, and missing-contact scenarios.
-- GitHub pull request merge into `main`.
-- Repomix regeneration following the merge.
-- Automatic Render deployment of the updated `main` branch.
-- Production verification of both frontend and backend service status.
-- Production scenario testing for all four recommendation outcomes.
+**Business-facing screen:**
 
-All four recommendation scenarios were successfully validated in the deployed application.
+- Lead information and engagement context remain visible.
+- Recommendation outcome and priority remain visible.
+- Recommendation explanation and business evidence remain accessible.
+- Suggested next action remains visible.
+- Internal agent execution details and raw JSON are not exposed in the normal view.
 
-The frontend and backend Render services were confirmed as Live.
+**Explainability & Audit:**
 
-**Phase 3.1 result:** The existing deterministic lead prioritization workflow was successfully presented through an improved, business-oriented recommendation experience without changing its underlying decision logic.
+- The section is collapsed by default.
+- Expanding it reveals run-scoped shared workflow context.
+- The five-agent execution timeline and structured outputs remain available.
+- LangGraph routing and execution trace remain available.
+- Gemini metadata and fallback information remain available when returned by the workflow.
+- Audit information and relevant raw JSON remain accessible.
+
+**Functional validation:**
+
+All four seeded scenarios were tested through the local application:
+
+| Scenario | Expected recommendation | Score | Result |
+|---|---|---:|---|
+| HOT | `FOLLOW_UP_NOW` | 95 | Passed |
+| WARM | `FOLLOW_UP_SOON` | 65 | Passed |
+| STALE | `NURTURE` | 0 | Passed |
+| Missing contact | `REQUEST_DATA` | 0 | Passed |
+
+The missing-contact scenario correctly followed the mandatory-data validation path and returned `REQUEST_DATA`. It stopped after the Lead Intake Agent rather than executing the remaining analytical agents. This is the expected incomplete-input behaviour.
+
+**Frontend validation:**
+
+- TypeScript validation using `npx tsc --noEmit` — passed.
+- Frontend production build using `npm run build` — passed.
+- Docker frontend image rebuild — completed successfully.
+- Local Docker Compose application — frontend and backend running and healthy.
+- Normal business-facing screen separation — verified.
+- Explainability & Audit expansion — verified.
+- Four recommendation scenarios — verified.
+- Responsive layout checks at 1440px, 768px, 390px, and 320px — completed.
+
+The latest Explainability & Audit separation has been validated locally. Its production deployment and production verification are a separate subsequent step.
+
+The frontend correction does not change the deterministic scoring model, recommendation rules, LangGraph routing, Gemini safeguards, backend architecture, or API decision authority.
+
+**Phase 3.1 result:** The application presents a focused business-facing recommendation experience while retaining the complete technical workflow and audit journey for reviewers through Explainability & Audit.

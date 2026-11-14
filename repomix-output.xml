@@ -91,6 +91,7 @@ backups/
     App.css
     App.tsx
   phase-3-1/
+    App.before-explainability.tsx
     App.css
     App.tsx
 docs/
@@ -1622,6 +1623,839 @@ function App() {
                   <h4>Recorded Agent Outputs</h4>
                   <pre className="json-output">
                     {JSON.stringify(result.audit_record.agent_outputs, null, 2)}
+                  </pre>
+                </>
+              )}
+
+              {result.errors.length > 0 && (
+                <p
+                  className={
+                    result.recommendation.action === 'REQUEST_DATA'
+                      ? 'validation-message'
+                      : 'error-message'
+                  }
+                >
+                  {result.errors.join(', ')}
+                </p>
+              )}
+            </section>
+          </>
+        )}
+
+        {!result && !loading && !error && (
+          <div className="empty-state">
+            <div className="empty-icon">↗</div>
+            <h3>Ready to evaluate leads</h3>
+            <p>
+              Select a scenario and run prioritization to explore the business input,
+              shared workflow context, agent outputs, decision evidence and audit trail.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <footer className="footer">
+        <span>AA007 · Lead Follow-up Prioritization Intelligence</span>
+        <span>Transparent rules · Explainable decisions</span>
+      </footer>
+    </main>
+  )
+}
+
+export default App
+</file>
+
+<file path="backups/phase-3-1/App.before-explainability.tsx">
+import { useEffect, useState } from 'react'
+import './App.css'
+
+type Scenario = {
+  description: string
+  lead_id: string
+}
+
+type Scenarios = Record<string, Scenario>
+
+type AgentOutput = {
+  agent_name: string
+  status?: string
+  validated_lead?: Record<string, unknown> | null
+  errors?: string[]
+  score?: number
+  days_since_last_contact?: number | null
+  event_count?: number
+  recognized_events?: string[]
+  reason?: string
+  fit_score?: number
+  sla_flags?: string[]
+  priority_score?: number
+  action?: string
+  triggered_rules?: string[]
+  reasons?: string[]
+}
+
+type WorkflowContext = {
+  workflow_id: string
+  started_at: string
+  lead_record: Record<string, unknown>
+  engagement_events: Array<Record<string, unknown>>
+  validated_lead: Record<string, unknown> | null
+  recency_score: number | null
+  engagement_score: number | null
+  fit_score: number | null
+  sla_flags: string[]
+  agent_outputs: Record<string, AgentOutput>
+  final_recommendation: Recommendation | null
+  explanation: Record<string, unknown> | null
+  audit_reference: string | null
+  errors: string[]
+}
+
+type Recommendation = {
+  priority_score: number
+  action: string
+  triggered_rules: string[]
+  reasons: string[]
+}
+
+type AuditRecord = {
+  audit_reference: string
+  workflow_id: string
+  timestamp: string
+  lead_id: string
+  agent_sequence: string[]
+  agent_outputs: Record<string, AgentOutput>
+  triggered_rules: string[]
+  final_recommendation: Recommendation
+  execution_trace: Array<{
+    node: string
+    status: string
+    provider?: string
+    model?: string
+    reason?: string
+    route?: string
+    condition?: string
+  }>
+  errors: string[]
+}
+
+type WorkflowResult = {
+  workflow_id: string
+  scenario?: string
+  lead_id: string
+  recommendation: Recommendation
+  explanation: {
+    summary: string
+    executed_agents: string[]
+    score_breakdown: {
+      recency: number | null
+      engagement: number | null
+      fit: number | null
+    }
+    triggered_rules: string[]
+    reasons: string[]
+    limitations: string[]
+  }
+  audit_reference: string
+  workflow_context: WorkflowContext
+  audit_record: AuditRecord | null
+  errors: string[]
+}
+
+const agentDefinitions: Record<
+  string,
+  {
+    responsibility: string
+    input: string
+  }
+> = {
+  lead_intake: {
+    responsibility: 'Validates mandatory lead fields and normalizes lead information.',
+    input: 'Lead record',
+  },
+  recency: {
+    responsibility: 'Evaluates how recently the lead was contacted.',
+    input: 'Validated lead and last-contact date',
+  },
+  engagement: {
+    responsibility: 'Scores recognized business engagement events.',
+    input: 'Validated lead and engagement events',
+  },
+  fit_sla: {
+    responsibility: 'Evaluates declared business need and pending follow-up SLA.',
+    input: 'Validated lead and follow-up information',
+  },
+  lead_priority: {
+    responsibility: 'Combines agent scores and business rules into a recommendation.',
+    input: 'Recency, engagement, fit and SLA outputs',
+  },
+}
+
+const agentOrder = [
+  'lead_intake',
+  'recency',
+  'engagement',
+  'fit_sla',
+  'lead_priority',
+]
+
+const actionLabels: Record<string, string> = {
+  FOLLOW_UP_NOW: 'Follow Up Now',
+  FOLLOW_UP_SOON: 'Follow Up Soon',
+  NURTURE: 'Nurture',
+  REQUEST_DATA: 'Request Data',
+}
+
+const actionDescriptions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'This lead needs prompt attention. Review the available evidence and arrange the next follow-up.',
+  FOLLOW_UP_SOON:
+    'This lead should remain in the active follow-up queue. Schedule the next contact soon.',
+  NURTURE:
+    'This lead is better suited to continued engagement. Keep it in the nurture process and review it later.',
+  REQUEST_DATA:
+    'Some mandatory lead information is missing. Complete the required information before prioritization can continue.',
+}
+
+const nextActions: Record<string, string> = {
+  FOLLOW_UP_NOW:
+    'Contact the lead as soon as practical. Review the declared need and agree on the next step.',
+  FOLLOW_UP_SOON:
+    'Schedule a follow-up within your team’s normal response window and keep the lead on the active list.',
+  NURTURE:
+    'Add the lead to the appropriate nurture queue and plan a future engagement review.',
+  REQUEST_DATA:
+    'Ask the responsible team member to provide the missing contact or lead information, then reassess.',
+}
+
+function formatValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') {
+    return 'Not provided'
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+
+  if (typeof value === 'object') {
+    return JSON.stringify(value, null, 2)
+  }
+
+  return String(value)
+}
+
+function formatDate(value: unknown): string {
+  if (!value || typeof value !== 'string') return 'Not provided'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return value
+
+  return date.toLocaleString()
+}
+
+function App() {
+  const [scenarios, setScenarios] = useState<Scenarios>({})
+  const [selectedScenario, setSelectedScenario] = useState('hot')
+  const [result, setResult] = useState<WorkflowResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    async function loadScenarios() {
+      try {
+        const response = await fetch('/api/leads/scenarios')
+
+        if (!response.ok) {
+          throw new Error('Unable to load scenarios.')
+        }
+
+        const data: Scenarios = await response.json()
+        setScenarios(data)
+      } catch {
+        setError(
+          'Could not connect to the backend. Please check that the API server is running.',
+        )
+      }
+    }
+
+    loadScenarios()
+  }, [])
+
+  async function runScenario() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    try {
+      const response = await fetch(
+        `/api/leads/scenarios/${selectedScenario}/run`,
+        { method: 'POST' },
+      )
+
+      if (!response.ok) {
+        throw new Error('Scenario execution failed.')
+      }
+
+      const data: WorkflowResult = await response.json()
+      setResult(data)
+    } catch {
+      setError('Unable to execute the workflow. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function runMissingContactTest() {
+    setLoading(true)
+    setError('')
+    setResult(null)
+
+    const now = new Date().toISOString()
+
+    const testPayload = {
+      lead: {
+        lead_id: 'LEAD-TEST-MISSING-001',
+        source: 'Website',
+        created_at: now,
+        last_contact_at: now,
+        declared_need: 'Airline booking assistance',
+        stage: 'New',
+        contact_available: false,
+        pending_follow_up: false,
+        follow_up_due_at: null,
+      },
+      engagement_events: [],
+    }
+
+    try {
+      const response = await fetch('/api/leads/prioritize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testPayload),
+      })
+
+      if (!response.ok) {
+        throw new Error('Missing-contact test failed.')
+      }
+
+      const data: WorkflowResult = await response.json()
+      setResult(data)
+    } catch {
+      setError(
+        'Unable to execute the missing-contact test. Please check the backend.',
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const context = result?.workflow_context
+  const executedOutputs = context?.agent_outputs ?? {}
+  const executedAgentKeys = Object.keys(executedOutputs)
+
+  const leadFields = [
+    ['Lead ID', 'lead_id'],
+    ['Source', 'source'],
+    ['Created At', 'created_at'],
+    ['Last Contact', 'last_contact_at'],
+    ['Declared Need', 'declared_need'],
+    ['Stage', 'stage'],
+    ['Contact Available', 'contact_available'],
+    ['Pending Follow-up', 'pending_follow_up'],
+    ['Follow-up Due', 'follow_up_due_at'],
+  ]
+
+  return (
+    <main className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <div className="brand-mark">A</div>
+          <div>
+            <h1>APEX</h1>
+            <p>Lead Intelligence Platform</p>
+          </div>
+        </div>
+        <div className="system-status">
+          <span className="status-dot" />
+          Deterministic Engine
+        </div>
+      </header>
+
+      <section className="page-content">
+        <div className="page-heading">
+          <div>
+            <p className="eyebrow">SALES OPERATIONS / INTELLIGENCE</p>
+            <h2>Lead Follow-up Prioritization Intelligence</h2>
+            <p className="subtitle">
+              Transparent, evidence-based lead prioritization through a coordinated agent workflow.
+            </p>
+          </div>
+          <div className="version-tag">AA007 · PHASE 3</div>
+        </div>
+
+        <section className="scenario-panel">
+          <div className="section-heading">
+            <div>
+              <h3>Workflow Scenarios</h3>
+              <p>Select a sample lead to evaluate its follow-up priority.</p>
+            </div>
+            <span className="scenario-count">03 SCENARIOS</span>
+          </div>
+
+          <div className="scenario-grid">
+            {Object.entries(scenarios).map(([key, scenario]) => (
+              <button
+                key={key}
+                className={`scenario-card ${selectedScenario === key ? 'selected' : ''}`}
+                onClick={() => {
+                  setSelectedScenario(key)
+                  setResult(null)
+                  setError('')
+                }}
+              >
+                <span className="scenario-name">{key.toUpperCase()}</span>
+                <strong>{scenario.lead_id}</strong>
+                <span className="scenario-description">
+                  {scenario.description}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="run-row">
+            <span>Run the selected lead through the workflow.</span>
+            <button
+              className="run-button"
+              onClick={runScenario}
+              disabled={loading || !scenarios[selectedScenario]}
+            >
+              {loading ? 'Running workflow...' : 'Run Prioritization'}
+              <span>→</span>
+            </button>
+          </div>
+        </section>
+
+        <section className="scenario-panel">
+          <div className="section-heading">
+            <div>
+              <h3>Mandatory Data Validation Test</h3>
+              <p>
+                Test how the Lead Intake Agent handles a lead with missing contact information.
+              </p>
+            </div>
+            <span className="scenario-count">EDGE CASE</span>
+          </div>
+
+          <div className="run-row">
+            <span>
+              Test input: LEAD-TEST-MISSING-001 · Contact Available: No
+            </span>
+            <button
+              className="run-button"
+              onClick={runMissingContactTest}
+              disabled={loading}
+            >
+              {loading ? 'Running test...' : 'Run REQUEST_DATA Test'}
+              <span>→</span>
+            </button>
+          </div>
+        </section>
+
+        {error && <div className="error-message">{error}</div>}
+
+        {result && context && (
+          <>
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">WORKFLOW RESULT</p>
+                  <h3>Priority Recommendation</h3>
+                </div>
+                <span className="completed-tag">COMPLETED</span>
+              </div>
+
+              <div className="result-grid">
+                <div className="recommendation-card">
+                  <span className="metric-label">RECOMMENDED ACTION</span>
+                  <h2>
+                    {actionLabels[result.recommendation.action] ||
+                      result.recommendation.action}
+                  </h2>
+                  <p>{result.recommendation.reasons.join(' ')}</p>
+                  <div className="recommendation-context">
+                    {actionDescriptions[result.recommendation.action] ||
+                      'Review the recommendation and supporting evidence.'}
+                  </div>
+                </div>
+
+                <div className="score-card">
+                  <span className="metric-label">PRIORITY SCORE</span>
+                  <div className="score-value">
+                    {result.recommendation.priority_score}
+                    <small>/100</small>
+                  </div>
+                  <div className="score-track">
+                    <div
+                      className="score-fill"
+                      style={{
+                        width: `${Math.min(
+                          result.recommendation.priority_score,
+                          100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="next-action-card">
+                <div className="next-action-icon">→</div>
+                <div>
+                  <span className="metric-label">SUGGESTED NEXT ACTION</span>
+                  <h4>
+                    {actionLabels[result.recommendation.action] || 'Review lead'}
+                  </h4>
+                  <p>
+                    {nextActions[result.recommendation.action] ||
+                      'Review the available lead information and determine the appropriate next step.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="breakdown-section">
+                <h4>Score Breakdown</h4>
+                <div className="breakdown-grid">
+                  {Object.entries(result.explanation.score_breakdown).map(
+                    ([name, score]) => (
+                      <div className="breakdown-item" key={name}>
+                        <span>{name}</span>
+                        <strong>{score}</strong>
+                      </div>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div className="rules-section">
+                <h4>Triggered Business Rules</h4>
+                <div className="rule-list">
+                  {result.recommendation.triggered_rules.length > 0 ? (
+                    result.recommendation.triggered_rules.map((rule) => (
+                      <span className="rule-tag" key={rule}>
+                        {rule}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="muted-text">No rules recorded.</span>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">01 / BUSINESS INPUT</p>
+                  <h3>Lead Record & Engagement</h3>
+                  <p>The input supplied to this workflow execution.</p>
+                </div>
+              </div>
+
+              <div className="input-grid">
+                {leadFields.map(([label, key]) => {
+                  const value = context.lead_record[key]
+                  const displayValue =
+                    key.endsWith('_at') ? formatDate(value) : formatValue(value)
+
+                  return (
+                    <div className="data-item" key={key}>
+                      <span>{label}</span>
+                      <strong>{displayValue}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <h4>Engagement Events ({context.engagement_events.length})</h4>
+              {context.engagement_events.length > 0 ? (
+                <div className="event-list">
+                  {context.engagement_events.map((event, index) => (
+                    <div
+                      className="event-row"
+                      key={String(event.event_id ?? index)}
+                    >
+                      <strong>{formatValue(event.event_type)}</strong>
+                      <span>{formatValue(event.event_id)}</span>
+                      <small>{formatDate(event.occurred_at)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-text">No engagement events supplied.</p>
+              )}
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">02 / SHARED CONTEXT</p>
+                  <h3>Run-Scoped Shared Workflow Context</h3>
+                  <p>
+                    A shared context created for this workflow run and updated as agents execute.
+                  </p>
+                </div>
+                <span className="scenario-count">RUN-SCOPED</span>
+              </div>
+
+              <div className="context-meta">
+                <div className="data-item">
+                  <span>Workflow ID</span>
+                  <strong>{context.workflow_id}</strong>
+                </div>
+                <div className="data-item">
+                  <span>Started At</span>
+                  <strong>{formatDate(context.started_at)}</strong>
+                </div>
+              </div>
+
+              <div className="context-grid">
+                <div className="context-item">
+                  <span>Normalized Lead Snapshot</span>
+                  <strong>
+                    {context.validated_lead ? 'Available' : 'Not available'}
+                  </strong>
+                </div>
+                <div className="context-item">
+                  <span>Recency Score</span>
+                  <strong>{formatValue(context.recency_score)}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Engagement Score</span>
+                  <strong>{formatValue(context.engagement_score)}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Fit Score</span>
+                  <strong>{formatValue(context.fit_score)}</strong>
+                </div>
+                <div className="context-item">
+                  <span>Agent Outputs</span>
+                  <strong>{executedAgentKeys.length} recorded</strong>
+                </div>
+                <div className="context-item">
+                  <span>Workflow Errors</span>
+                  <strong>{context.errors.length}</strong>
+                </div>
+              </div>
+
+              <h4>Execution Summary</h4>
+              <div className="context-updates">
+                <div>
+                  <span>01</span> Lead record and engagement events initialized
+                </div>
+                <div>
+                  <span>02</span>
+                  Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
+                </div>
+                <div>
+                  <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
+                </div>
+                <div>
+                  <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
+                </div>
+                <div>
+                  <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
+                </div>
+              </div>
+
+              <p className="muted-text context-note">
+                This context belongs to one workflow execution. It is not permanent or long-term memory.
+              </p>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">03 / AGENT EXECUTION</p>
+                  <h3>Agent Workflow Timeline</h3>
+                  <p>Only agents with recorded outputs are shown as executed.</p>
+                </div>
+                <span className="scenario-count">
+                  {executedAgentKeys.length} EXECUTED
+                </span>
+              </div>
+
+              <div className="workflow-line">
+                {agentOrder.map((key, index) => {
+                  const output = executedOutputs[key]
+                  const definition = agentDefinitions[key]
+
+                  return (
+                    <article
+                      className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
+                      key={key}
+                    >
+                      <div className="agent-card-heading">
+                        <span className="agent-number">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
+                        <div>
+                          <h4>{definition.responsibility.split('.')[0]}</h4>
+                          <p>{definition.responsibility}</p>
+                        </div>
+                        <span
+                          className={
+                            output ? 'agent-status' : 'agent-skipped-status'
+                          }
+                        >
+                          {output ? 'Executed' : 'Not executed'}
+                        </span>
+                      </div>
+
+                      <div className="agent-detail-grid">
+                        <div>
+                          <span>Important Input</span>
+                          <strong>{definition.input}</strong>
+                        </div>
+                        <div>
+                          <span>Output</span>
+                          {output ? (
+                            <strong>{output.agent_name}</strong>
+                          ) : (
+                            <strong>None recorded</strong>
+                          )}
+                        </div>
+                      </div>
+
+                      {output && (
+                        <>
+                          <h5>Structured Output</h5>
+                          <pre className="json-output">
+                            {JSON.stringify(output, null, 2)}
+                          </pre>
+                        </>
+                      )}
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">04 / DECISION EVIDENCE</p>
+                  <h3>Rules, Scores & Evidence</h3>
+                </div>
+              </div>
+
+              <h4>SLA Flags</h4>
+              <div className="rule-list">
+                {context.sla_flags.length > 0 ? (
+                  context.sla_flags.map((flag) => (
+                    <span className="rule-tag" key={flag}>
+                      {flag}
+                    </span>
+                  ))
+                ) : (
+                  <span className="muted-text">No SLA flags recorded.</span>
+                )}
+              </div>
+
+              <h4>Decision Reasons</h4>
+              <ul className="reason-list">
+                {result.explanation.reasons.map((reason, index) => (
+                  <li key={index}>{reason}</li>
+                ))}
+              </ul>
+
+              <h4>Explanation</h4>
+              <p className="explanation-text">{result.explanation.summary}</p>
+
+              {result.explanation.limitations.length > 0 && (
+                <>
+                  <h4>Limitations and Errors</h4>
+                  <ul className="reason-list">
+                    {result.explanation.limitations.map((item, index) => (
+                      <li key={index}>{item}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </section>
+
+            <section className="audit-panel">
+              <div>
+                <p className="eyebrow">05 / AUDIT TRAIL</p>
+                <h3>Workflow Traceability</h3>
+                <p className="subtitle">
+                  Recorded execution details from the in-memory audit service.
+                </p>
+              </div>
+
+              <div className="audit-details">
+                <div>
+                  <span>Workflow ID</span>
+                  <strong>{result.workflow_id}</strong>
+                </div>
+                <div>
+                  <span>Audit Reference</span>
+                  <strong>{result.audit_reference}</strong>
+                </div>
+                <div>
+                  <span>Lead ID</span>
+                  <strong>{result.lead_id}</strong>
+                </div>
+                <div>
+                  <span>Audit Timestamp</span>
+                  <strong>
+                    {result.audit_record
+                      ? formatDate(result.audit_record.timestamp)
+                      : 'Not available'}
+                  </strong>
+                </div>
+                <div>
+                  <span>Recorded Agent Sequence</span>
+                  <strong>
+                    {result.audit_record?.agent_sequence.join(' → ') ||
+                      'No agents recorded'}
+                  </strong>
+                </div>
+                <div>
+                  <span>Audit Storage</span>
+                  <strong>In-memory · Process-local</strong>
+                </div>
+              </div>
+
+              {result.audit_record && (
+                <>
+                  <h4>Execution Trace & LLM Metadata</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(
+                      result.audit_record.execution_trace,
+                      null,
+                      2,
+                    )}
+                  </pre>
+
+                  <h4>Recorded Recommendation</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(
+                      result.audit_record.final_recommendation,
+                      null,
+                      2,
+                    )}
+                  </pre>
+
+                  <h4>Recorded Agent Outputs</h4>
+                  <pre className="json-output">
+                    {JSON.stringify(
+                      result.audit_record.agent_outputs,
+                      null,
+                      2,
+                    )}
                   </pre>
                 </>
               )}
@@ -6442,6 +7276,111 @@ button {
     flex-direction: column;
   }
 }
+
+/* ========================================
+   PHASE 3.1 — EXPLAINABILITY & AUDIT
+======================================== */
+
+.explainability-panel {
+  margin: 22px 0;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.explainability-summary {
+  min-height: 82px;
+  padding: 20px 25px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.2s ease;
+}
+
+.explainability-summary::-webkit-details-marker {
+  display: none;
+}
+
+.explainability-summary:hover {
+  background: var(--surface-raised);
+}
+
+.explainability-summary:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: -3px;
+}
+
+.explainability-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.explainability-description {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.explainability-indicator {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--gold-soft);
+  color: var(--gold);
+  font-size: 21px;
+  font-weight: 700;
+  transition: transform 0.2s ease;
+}
+
+.explainability-panel[open] .explainability-indicator {
+  transform: rotate(45deg);
+}
+
+.explainability-content {
+  padding: 0 20px 8px;
+  border-top: 1px solid var(--border);
+}
+
+.explainability-content .result-panel,
+.explainability-content .audit-panel {
+  margin: 18px 0;
+}
+
+@media (max-width: 560px) {
+  .explainability-summary {
+    padding: 17px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .explainability-title {
+    flex: 1;
+    font-size: 14px;
+  }
+
+  .explainability-description {
+    flex-basis: calc(100% - 45px);
+    order: 3;
+    font-size: 11px;
+  }
+
+  .explainability-indicator {
+    order: 2;
+  }
+
+  .explainability-content {
+    padding: 0 10px 5px;
+  }
+}
 </file>
 
 <file path="frontend/nginx.conf">
@@ -7566,11 +8505,59 @@ function App() {
 
         {result && context && (
           <>
+            {/* BUSINESS-FACING SECTION 1: LEAD INPUT */}
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">BUSINESS INPUT</p>
+                  <h3>Lead Record & Engagement</h3>
+                  <p>The lead information used for this prioritization.</p>
+                </div>
+              </div>
+
+              <div className="input-grid">
+                {leadFields.map(([label, key]) => {
+                  const value = context.lead_record[key]
+                  const displayValue =
+                    key.endsWith('_at') ? formatDate(value) : formatValue(value)
+
+                  return (
+                    <div className="data-item" key={key}>
+                      <span>{label}</span>
+                      <strong>{displayValue}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <h4>Engagement Events ({context.engagement_events.length})</h4>
+              {context.engagement_events.length > 0 ? (
+                <div className="event-list">
+                  {context.engagement_events.map((event, index) => (
+                    <div
+                      className="event-row"
+                      key={String(event.event_id ?? index)}
+                    >
+                      <strong>{formatValue(event.event_type)}</strong>
+                      <span>{formatValue(event.event_id)}</span>
+                      <small>{formatDate(event.occurred_at)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-text">No engagement events supplied.</p>
+              )}
+            </section>
+
+            {/* BUSINESS-FACING SECTION 2: RECOMMENDATION */}
+
             <section className="result-panel">
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">WORKFLOW RESULT</p>
                   <h3>Priority Recommendation</h3>
+                  <p>Recommended follow-up action based on the available lead evidence.</p>
                 </div>
                 <span className="completed-tag">COMPLETED</span>
               </div>
@@ -7623,242 +8610,54 @@ function App() {
                 </div>
               </div>
 
-              <div className="breakdown-section">
-                <h4>Score Breakdown</h4>
-                <div className="breakdown-grid">
-                  {Object.entries(result.explanation.score_breakdown).map(
-                    ([name, score]) => (
-                      <div className="breakdown-item" key={name}>
-                        <span>{name}</span>
-                        <strong>{score}</strong>
-                      </div>
-                    ),
-                  )}
+              {/* Keep validation feedback visible to business users. */}
+
+              {result.errors.length > 0 && (
+                <div
+                  className={
+                    result.recommendation.action === 'REQUEST_DATA'
+                      ? 'validation-message'
+                      : 'error-message'
+                  }
+                >
+                  {result.errors.join(', ')}
                 </div>
-              </div>
-
-              <div className="rules-section">
-                <h4>Triggered Business Rules</h4>
-                <div className="rule-list">
-                  {result.recommendation.triggered_rules.length > 0 ? (
-                    result.recommendation.triggered_rules.map((rule) => (
-                      <span className="rule-tag" key={rule}>
-                        {rule}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="muted-text">No rules recorded.</span>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="result-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">01 / BUSINESS INPUT</p>
-                  <h3>Lead Record & Engagement</h3>
-                  <p>The input supplied to this workflow execution.</p>
-                </div>
-              </div>
-
-              <div className="input-grid">
-                {leadFields.map(([label, key]) => {
-                  const value = context.lead_record[key]
-                  const displayValue =
-                    key.endsWith('_at') ? formatDate(value) : formatValue(value)
-
-                  return (
-                    <div className="data-item" key={key}>
-                      <span>{label}</span>
-                      <strong>{displayValue}</strong>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <h4>Engagement Events ({context.engagement_events.length})</h4>
-              {context.engagement_events.length > 0 ? (
-                <div className="event-list">
-                  {context.engagement_events.map((event, index) => (
-                    <div
-                      className="event-row"
-                      key={String(event.event_id ?? index)}
-                    >
-                      <strong>{formatValue(event.event_type)}</strong>
-                      <span>{formatValue(event.event_id)}</span>
-                      <small>{formatDate(event.occurred_at)}</small>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted-text">No engagement events supplied.</p>
               )}
             </section>
 
-            <section className="result-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">02 / SHARED CONTEXT</p>
-                  <h3>Run-Scoped Shared Workflow Context</h3>
-                  <p>
-                    A shared context created for this workflow run and updated as agents execute.
-                  </p>
-                </div>
-                <span className="scenario-count">RUN-SCOPED</span>
-              </div>
-
-              <div className="context-meta">
-                <div className="data-item">
-                  <span>Workflow ID</span>
-                  <strong>{context.workflow_id}</strong>
-                </div>
-                <div className="data-item">
-                  <span>Started At</span>
-                  <strong>{formatDate(context.started_at)}</strong>
-                </div>
-              </div>
-
-              <div className="context-grid">
-                <div className="context-item">
-                  <span>Normalized Lead Snapshot</span>
-                  <strong>
-                    {context.validated_lead ? 'Available' : 'Not available'}
-                  </strong>
-                </div>
-                <div className="context-item">
-                  <span>Recency Score</span>
-                  <strong>{formatValue(context.recency_score)}</strong>
-                </div>
-                <div className="context-item">
-                  <span>Engagement Score</span>
-                  <strong>{formatValue(context.engagement_score)}</strong>
-                </div>
-                <div className="context-item">
-                  <span>Fit Score</span>
-                  <strong>{formatValue(context.fit_score)}</strong>
-                </div>
-                <div className="context-item">
-                  <span>Agent Outputs</span>
-                  <strong>{executedAgentKeys.length} recorded</strong>
-                </div>
-                <div className="context-item">
-                  <span>Workflow Errors</span>
-                  <strong>{context.errors.length}</strong>
-                </div>
-              </div>
-
-              <h4>Execution Summary</h4>
-              <div className="context-updates">
-                <div>
-                  <span>01</span> Lead record and engagement events initialized
-                </div>
-                <div>
-                  <span>02</span>
-                  Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
-                </div>
-                <div>
-                  <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
-                </div>
-                <div>
-                  <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
-                </div>
-                <div>
-                  <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
-                </div>
-              </div>
-
-              <p className="muted-text context-note">
-                This context belongs to one workflow execution. It is not permanent or long-term memory.
-              </p>
-            </section>
+            {/* BUSINESS-FACING SECTION 3: DECISION EVIDENCE */}
 
             <section className="result-panel">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">03 / AGENT EXECUTION</p>
-                  <h3>Agent Workflow Timeline</h3>
-                  <p>Only agents with recorded outputs are shown as executed.</p>
-                </div>
-                <span className="scenario-count">
-                  {executedAgentKeys.length} EXECUTED
-                </span>
-              </div>
-
-              <div className="workflow-line">
-                {agentOrder.map((key, index) => {
-                  const output = executedOutputs[key]
-                  const definition = agentDefinitions[key]
-
-                  return (
-                    <article
-                      className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
-                      key={key}
-                    >
-                      <div className="agent-card-heading">
-                        <span className="agent-number">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
-                        <div>
-                          <h4>{definition.responsibility.split('.')[0]}</h4>
-                          <p>{definition.responsibility}</p>
-                        </div>
-                        <span
-                          className={
-                            output ? 'agent-status' : 'agent-skipped-status'
-                          }
-                        >
-                          {output ? 'Executed' : 'Not executed'}
-                        </span>
-                      </div>
-
-                      <div className="agent-detail-grid">
-                        <div>
-                          <span>Important Input</span>
-                          <strong>{definition.input}</strong>
-                        </div>
-                        <div>
-                          <span>Output</span>
-                          {output ? (
-                            <strong>{output.agent_name}</strong>
-                          ) : (
-                            <strong>None recorded</strong>
-                          )}
-                        </div>
-                      </div>
-
-                      {output && (
-                        <>
-                          <h5>Structured Output</h5>
-                          <pre className="json-output">
-                            {JSON.stringify(output, null, 2)}
-                          </pre>
-                        </>
-                      )}
-                    </article>
-                  )
-                })}
-              </div>
-            </section>
-
-            <section className="result-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">04 / DECISION EVIDENCE</p>
+                  <p className="eyebrow">BUSINESS EVIDENCE</p>
                   <h3>Rules, Scores & Evidence</h3>
+                  <p>Key factors supporting the recommendation.</p>
                 </div>
               </div>
 
-              <h4>SLA Flags</h4>
+              <h4>Score Breakdown</h4>
+              <div className="breakdown-grid">
+                {Object.entries(result.explanation.score_breakdown).map(
+                  ([name, score]) => (
+                    <div className="breakdown-item" key={name}>
+                      <span>{name}</span>
+                      <strong>{formatValue(score)}</strong>
+                    </div>
+                  ),
+                )}
+              </div>
+
+              <h4>Triggered Business Rules</h4>
               <div className="rule-list">
-                {context.sla_flags.length > 0 ? (
-                  context.sla_flags.map((flag) => (
-                    <span className="rule-tag" key={flag}>
-                      {flag}
+                {result.recommendation.triggered_rules.length > 0 ? (
+                  result.recommendation.triggered_rules.map((rule) => (
+                    <span className="rule-tag" key={rule}>
+                      {rule}
                     </span>
                   ))
                 ) : (
-                  <span className="muted-text">No SLA flags recorded.</span>
+                  <span className="muted-text">No rules recorded.</span>
                 )}
               </div>
 
@@ -7874,7 +8673,7 @@ function App() {
 
               {result.explanation.limitations.length > 0 && (
                 <>
-                  <h4>Limitations and Errors</h4>
+                  <h4>Limitations</h4>
                   <ul className="reason-list">
                     {result.explanation.limitations.map((item, index) => (
                       <li key={index}>{item}</li>
@@ -7884,92 +8683,269 @@ function App() {
               )}
             </section>
 
-            <section className="audit-panel">
-              <div>
-                <p className="eyebrow">05 / AUDIT TRAIL</p>
-                <h3>Workflow Traceability</h3>
-                <p className="subtitle">
-                  Recorded execution details from the in-memory audit service.
-                </p>
+            {/* ADVANCED TECHNICAL DETAILS: CLOSED BY DEFAULT */}
+
+            <details className="explainability-panel">
+              <summary className="explainability-summary">
+                <span className="explainability-title">
+                  Explainability & Audit
+                </span>
+                <span className="explainability-description">
+                  Advanced technical details · Reviewer view
+                </span>
+                <span className="explainability-indicator" aria-hidden="true">
+                  +
+                </span>
+              </summary>
+
+              <div className="explainability-content">
+
+                {/* RUN-SCOPED SHARED WORKFLOW CONTEXT */}
+
+                <section className="result-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">01 / SHARED CONTEXT</p>
+                      <h3>Run-Scoped Shared Workflow Context</h3>
+                      <p>
+                        A shared context created for this workflow run and updated as agents execute.
+                      </p>
+                    </div>
+                    <span className="scenario-count">RUN-SCOPED</span>
+                  </div>
+
+                  <div className="context-meta">
+                    <div className="data-item">
+                      <span>Workflow ID</span>
+                      <strong>{context.workflow_id}</strong>
+                    </div>
+                    <div className="data-item">
+                      <span>Started At</span>
+                      <strong>{formatDate(context.started_at)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="context-grid">
+                    <div className="context-item">
+                      <span>Normalized Lead Snapshot</span>
+                      <strong>
+                        {context.validated_lead ? 'Available' : 'Not available'}
+                      </strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Recency Score</span>
+                      <strong>{formatValue(context.recency_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Engagement Score</span>
+                      <strong>{formatValue(context.engagement_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Fit Score</span>
+                      <strong>{formatValue(context.fit_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Agent Outputs</span>
+                      <strong>{executedAgentKeys.length} recorded</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Workflow Errors</span>
+                      <strong>{context.errors.length}</strong>
+                    </div>
+                  </div>
+
+                  <h4>Execution Summary</h4>
+                  <div className="context-updates">
+                    <div>
+                      <span>01</span> Lead record and engagement events initialized
+                    </div>
+                    <div>
+                      <span>02</span>
+                      Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
+                    </div>
+                    <div>
+                      <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
+                    </div>
+                    <div>
+                      <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
+                    </div>
+                    <div>
+                      <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
+                    </div>
+                  </div>
+
+                  <p className="muted-text context-note">
+                    This context belongs to one workflow execution. It is not permanent or long-term memory.
+                  </p>
+                </section>
+
+                {/* FIVE-AGENT EXECUTION TIMELINE */}
+
+                <section className="result-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">02 / AGENT EXECUTION</p>
+                      <h3>Agent Workflow Timeline</h3>
+                      <p>Only agents with recorded outputs are shown as executed.</p>
+                    </div>
+                    <span className="scenario-count">
+                      {executedAgentKeys.length} EXECUTED
+                    </span>
+                  </div>
+
+                  <div className="workflow-line">
+                    {agentOrder.map((key, index) => {
+                      const output = executedOutputs[key]
+                      const definition = agentDefinitions[key]
+
+                      return (
+                        <article
+                          className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
+                          key={key}
+                        >
+                          <div className="agent-card-heading">
+                            <span className="agent-number">
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <div>
+                              <h4>{definition.responsibility.split('.')[0]}</h4>
+                              <p>{definition.responsibility}</p>
+                            </div>
+                            <span
+                              className={
+                                output ? 'agent-status' : 'agent-skipped-status'
+                              }
+                            >
+                              {output ? 'Executed' : 'Not executed'}
+                            </span>
+                          </div>
+
+                          <div className="agent-detail-grid">
+                            <div>
+                              <span>Important Input</span>
+                              <strong>{definition.input}</strong>
+                            </div>
+                            <div>
+                              <span>Output</span>
+                              {output ? (
+                                <strong>{output.agent_name}</strong>
+                              ) : (
+                                <strong>None recorded</strong>
+                              )}
+                            </div>
+                          </div>
+
+                          {output && (
+                            <>
+                              <h5>Structured Output</h5>
+                              <pre className="json-output">
+                                {JSON.stringify(output, null, 2)}
+                              </pre>
+                            </>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                {/* AUDIT TRAIL, EXECUTION TRACE AND GEMINI METADATA */}
+
+                <section className="audit-panel">
+                  <div>
+                    <p className="eyebrow">03 / AUDIT TRAIL</p>
+                    <h3>Workflow Traceability</h3>
+                    <p className="subtitle">
+                      Recorded execution details from the in-memory audit service.
+                    </p>
+                  </div>
+
+                  <div className="audit-details">
+                    <div>
+                      <span>Workflow ID</span>
+                      <strong>{result.workflow_id}</strong>
+                    </div>
+                    <div>
+                      <span>Audit Reference</span>
+                      <strong>{result.audit_reference}</strong>
+                    </div>
+                    <div>
+                      <span>Lead ID</span>
+                      <strong>{result.lead_id}</strong>
+                    </div>
+                    <div>
+                      <span>Audit Timestamp</span>
+                      <strong>
+                        {result.audit_record
+                          ? formatDate(result.audit_record.timestamp)
+                          : 'Not available'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Recorded Agent Sequence</span>
+                      <strong>
+                        {result.audit_record?.agent_sequence.join(' → ') ||
+                          'No agents recorded'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Audit Storage</span>
+                      <strong>In-memory · Process-local</strong>
+                    </div>
+                  </div>
+
+                  {result.audit_record && (
+                    <>
+                      <h4>Execution Trace & LLM Metadata</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.execution_trace,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Recorded Recommendation</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.final_recommendation,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Recorded Agent Outputs</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.agent_outputs,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Complete Audit Record · Raw JSON</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(result.audit_record, null, 2)}
+                      </pre>
+                    </>
+                  )}
+
+                  {result.audit_record?.errors &&
+                    result.audit_record.errors.length > 0 && (
+                      <>
+                        <h4>Recorded Execution Errors</h4>
+                        <pre className="json-output">
+                          {JSON.stringify(
+                            result.audit_record.errors,
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </>
+                    )}
+                </section>
               </div>
-
-              <div className="audit-details">
-                <div>
-                  <span>Workflow ID</span>
-                  <strong>{result.workflow_id}</strong>
-                </div>
-                <div>
-                  <span>Audit Reference</span>
-                  <strong>{result.audit_reference}</strong>
-                </div>
-                <div>
-                  <span>Lead ID</span>
-                  <strong>{result.lead_id}</strong>
-                </div>
-                <div>
-                  <span>Audit Timestamp</span>
-                  <strong>
-                    {result.audit_record
-                      ? formatDate(result.audit_record.timestamp)
-                      : 'Not available'}
-                  </strong>
-                </div>
-                <div>
-                  <span>Recorded Agent Sequence</span>
-                  <strong>
-                    {result.audit_record?.agent_sequence.join(' → ') ||
-                      'No agents recorded'}
-                  </strong>
-                </div>
-                <div>
-                  <span>Audit Storage</span>
-                  <strong>In-memory · Process-local</strong>
-                </div>
-              </div>
-
-              {result.audit_record && (
-                <>
-                  <h4>Execution Trace & LLM Metadata</h4>
-                  <pre className="json-output">
-                    {JSON.stringify(
-                      result.audit_record.execution_trace,
-                      null,
-                      2,
-                    )}
-                  </pre>
-
-                  <h4>Recorded Recommendation</h4>
-                  <pre className="json-output">
-                    {JSON.stringify(
-                      result.audit_record.final_recommendation,
-                      null,
-                      2,
-                    )}
-                  </pre>
-
-                  <h4>Recorded Agent Outputs</h4>
-                  <pre className="json-output">
-                    {JSON.stringify(
-                      result.audit_record.agent_outputs,
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </>
-              )}
-
-              {result.errors.length > 0 && (
-                <p
-                  className={
-                    result.recommendation.action === 'REQUEST_DATA'
-                      ? 'validation-message'
-                      : 'error-message'
-                  }
-                >
-                  {result.errors.join(', ')}
-                </p>
-              )}
-            </section>
+            </details>
           </>
         )}
 
@@ -7978,8 +8954,8 @@ function App() {
             <div className="empty-icon">↗</div>
             <h3>Ready to evaluate leads</h3>
             <p>
-              Select a scenario and run prioritization to explore the business input,
-              shared workflow context, agent outputs, decision evidence and audit trail.
+              Select a scenario and run prioritization to explore the lead information,
+              business recommendation, supporting evidence and suggested next action.
             </p>
           </div>
         )}
@@ -8002,7 +8978,7 @@ export default App
 **Product:** APEX — Lead Intelligence Platform  
 **Case ID:** AA007  
 **Architecture Version:** 3.1  
-**Current Phase:** Phase 3.1 — Productize the Business Experience
+**Current Phase:** Phase 3.1 — Business Experience Separation & Productization
 
 ## 1. Architecture Overview
 
@@ -8018,7 +8994,17 @@ LangGraph manages conditional orchestration and shared workflow state. It does n
 
 The workflow records node execution statuses and router selections, including the selected route and triggering condition. The complete execution trace is copied into the audit record, including the final explanation and audit completion entry.
 
-The frontend provides a business-oriented interface for entering or selecting lead scenarios and reviewing the resulting prioritization decisions. It presents recommendation outcomes, priority scores, score breakdowns, explanatory context, suggested next actions, agent execution information, and audit references.
+The frontend provides a business-oriented interface for entering or selecting lead scenarios and reviewing the resulting prioritization decisions. The normal business-facing screen focuses on:
+
+- Lead information and engagement context.
+- Recommendation outcome and priority score.
+- Recommendation explanation and business-readable reasons.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
+
+Internal technical execution information is separated from the normal business-facing experience.
+
+A collapsed-by-default **Explainability & Audit** section provides access to the detailed technical journey when expanded. It retains the run-scoped workflow context, five-agent execution timeline, structured agent outputs, LangGraph routing and execution trace, Gemini metadata, and audit information, including raw JSON where useful.
 
 The application uses a consistent dark navy and gold visual design. The recommendation experience includes an explanation of why an outcome was selected and a suggested next action to help users understand the appropriate follow-up response.
 
@@ -8050,30 +9036,30 @@ LangGraph StateGraph
        |
        +--------------------+--------------------+
        |                    |                    |
-   Valid data          Missing data        Intake failure
+   Valid data          Missing data       Intake failure
        |                    |                    |
        v                    v                    v
     recency             request_data       workflow_error
        |                    |                    |
        v                    +---------+----------+
-   engagement                       |
-       |                            |
-       v                            |
-     fit_sla                        |
-       |                            |
-       v                            |
- priority_decision                  |
-       |                            |
-       v                            |
-  Priority Router                   |
-       |                            |
-       +--> overdue_follow_up       |
-       +--> high_priority           |
-       +--> follow_up_soon          |
-       +--> nurture                 |
-       +--> workflow_error          |
-       |                            |
-       +-------------+--------------+
+  engagement                        |
+       |                             |
+       v                             |
+    fit_sla                          |
+       |                             |
+       v                             |
+ priority_decision                   |
+       |                             |
+       v                             |
+  Priority Router                    |
+       |                             |
+       +--> overdue_follow_up        |
+       +--> high_priority            |
+       +--> follow_up_soon           |
+       +--> nurture                  |
+       +--> workflow_error           |
+       |                             |
+       +-------------+---------------+
                      |
                      v
              build_explanation
@@ -8093,15 +9079,22 @@ LangGraph StateGraph
                      v
                   Frontend
                      |
-                     v
-          Business Recommendation
-               Presentation
-                     |
           +----------+----------+
           |                     |
           v                     v
- Recommendation           Suggested Next
- Explanation                 Action
+  Business-facing        Explainability
+  Recommendation          & Audit
+  Presentation            (collapsed by
+                           default)
+          |                     |
+          v                     v
+  Lead information       Shared workflow
+  Recommendation         context
+  Priority and status    Five-agent timeline
+  Explanation            Structured outputs
+  Evidence               LangGraph trace
+  Suggested action       Gemini metadata
+                         Audit and raw JSON
 ```
 
 ### 2.1 Workflow Execution Behaviour
@@ -8116,7 +9109,7 @@ LangGraph StateGraph
 - **Deterministic explanation:** All outcome paths converge on `build_explanation`, which generates the original evidence-based explanation.
 - **Gemini enhancement:** `gemini_explanation` optionally rewrites the explanation using structured decision evidence. The lead identifier is excluded, and the recommendation and priority score remain unchanged.
 - **Explanation and audit:** `explanation_audit` records the complete execution trace after the Gemini result or deterministic fallback has been applied.
-- **Frontend presentation:** The frontend displays the API response as a business recommendation with supporting evidence, explanatory context, and a suggested next action.
+- **Frontend presentation:** The frontend presents the business recommendation separately from the technical workflow and audit information.
 
 ### 2.2 Conditional Routing and Execution Trace
 
@@ -8187,11 +9180,38 @@ The LangGraph StateGraph uses a shared workflow state to pass the lead record, e
 
 The execution trace records node names and statuses, along with router selections. Router entries include the selected `route` and triggering `condition`. The audit service copies the complete trace into the audit record so that the workflow path can be inspected alongside the recommendation and agent outputs.
 
-The frontend consumes the workflow response to present the final recommendation, supporting evidence, score information, and audit details.
+### 4.1 Frontend Access to Workflow Context
+
+The backend continues to return the workflow information required for recommendation presentation and technical inspection.
+
+The frontend separates this information into two presentation areas.
+
+**Business-facing recommendation area:**
+
+- Lead information and engagement context.
+- Final recommendation.
+- Priority score and available score breakdown.
+- Recommendation explanation.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
+
+**Explainability & Audit area:**
+
+- Run-scoped shared workflow context.
+- Agent execution timeline and statuses.
+- Structured outputs from the five agents.
+- LangGraph execution trace and selected routing conditions.
+- Gemini provider, model, execution status, and reason when available.
+- Audit reference and complete audit record.
+- Relevant raw JSON for technical inspection.
+
+The Explainability & Audit section is collapsed by default. The reviewer can expand it when technical details are required.
 
 The explanatory recommendation context and suggested next action are presentation-layer elements derived from the final recommendation. They do not change the shared workflow state or determine the business outcome.
 
-This structure supports execution inspection, route validation, and audit traceability. Audit storage remains process-local in the current MVP.
+This structure supports a focused business experience while preserving execution inspection, route validation, and audit traceability.
+
+Audit storage remains process-local in the current MVP.
 
 ## 5. Decision and Scoring Layer
 
@@ -8280,6 +9300,8 @@ These elements are based on the final recommendation and use predefined presenta
 
 If Gemini is unavailable, the deterministic explanation remains available. The recommendation and suggested next action continue to be presented according to the deterministic workflow outcome.
 
+Technical information about the Gemini enhancement remains accessible in the Explainability & Audit section rather than being displayed in the normal business-facing screen.
+
 ## 7. Audit Service
 
 The Audit Service records information about workflow executions, including:
@@ -8297,7 +9319,7 @@ The Audit Service records information about workflow executions, including:
 
 The audit service copies the complete execution trace into each audit record after the `explanation_audit` completion entry has been appended. The trace includes the Gemini enhancement status and fallback reason when applicable.
 
-The frontend displays the audit information returned by the backend so that users can inspect the execution evidence associated with a recommendation.
+The frontend makes the audit information returned by the backend available through the Explainability & Audit section. This allows technical reviewers to inspect the execution evidence associated with a recommendation without exposing the full technical record in the normal business-facing experience.
 
 The recommendation explanation and suggested next action are presentation-layer elements. They do not replace the original execution trace or audit record.
 
@@ -8311,23 +9333,23 @@ The React and TypeScript frontend communicates with the backend through the Vite
 
 In the production deployment, the frontend uses Nginx to forward requests under `/api/` to the configured backend service. The browser communicates with the frontend origin, while Nginx handles backend routing.
 
-The frontend dashboard provides:
-
-- Lead scenario selection.
-- Business input and lead information.
-- Recommendation outcome.
-- Priority score and score breakdown.
-- Agent execution information.
-- Supporting evidence and triggered business rules.
-- Recommendation explanation.
-- Suggested next action.
-- Audit information.
-
-### 8.1 Phase 3.1 Business Recommendation Presentation
+### 8.1 Business-Facing Recommendation Presentation
 
 Phase 3.1 improves the business-facing presentation of the existing prioritization results.
 
-The original dark navy and gold visual design is retained. The recommendation experience is enhanced with an explanatory context and a dedicated suggested next action section.
+The original dark navy and gold visual design is retained. The normal application screen focuses on the information needed to understand and act on the recommendation.
+
+The business-facing screen presents:
+
+- Lead information and engagement context.
+- Recommendation outcome and priority score.
+- Recommendation explanation and business-readable reasons.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
+
+The internal agent execution timeline, shared workflow context, raw structured agent outputs, technical execution trace, Gemini metadata, and detailed audit JSON are not displayed in the normal business-facing view.
+
+### 8.2 Recommendation Outcomes
 
 The frontend supports four recommendation outcomes:
 
@@ -8356,7 +9378,7 @@ This lead is better suited to continued engagement. Keep it in the nurture proce
 
 Some mandatory lead information is missing. Complete the required information before prioritization can continue.
 
-### 8.2 Suggested Next Actions
+### 8.3 Suggested Next Actions
 
 The frontend displays a suggested next action based on the final deterministic recommendation.
 
@@ -8369,7 +9391,52 @@ The frontend displays a suggested next action based on the final deterministic r
 
 These suggestions are guidance for human users. They do not automatically contact leads, schedule activities, or modify CRM records.
 
-### 8.3 Presentation and Decision Boundaries
+### 8.4 Explainability & Audit — Advanced Technical Details
+
+The Explainability & Audit section separates technical workflow information from the normal business-facing recommendation experience.
+
+It is collapsed by default. A user or technical reviewer can expand the section when deeper execution inspection is needed.
+
+When expanded, the section provides access to:
+
+1. **Run-Scoped Shared Workflow Context**
+   - Workflow identifier and execution information.
+   - Original and validated lead information.
+   - Engagement events and analytical results.
+   - Shared workflow state and errors.
+
+2. **Five-Agent Execution Timeline**
+   - Agent execution order.
+   - Agent statuses.
+   - Individual structured outputs.
+   - Agent-specific evidence and results.
+
+3. **LangGraph Execution and Routing**
+   - Workflow node names and execution statuses.
+   - Intake router selection and condition.
+   - Priority router selection and triggering condition.
+   - Selected business outcome path.
+   - Complete execution trace.
+
+4. **Gemini Execution Information**
+   - Provider and configured model.
+   - Execution status.
+   - Execution reason or fallback information.
+   - Relevant information returned in the workflow trace.
+
+5. **Audit Information**
+   - Audit reference.
+   - Recorded recommendation.
+   - Agent execution sequence.
+   - Triggered rules.
+   - Complete audit record.
+   - Raw JSON for technical inspection.
+
+The technical information is preserved for internship evaluation, debugging, and verification of the agentic workflow implementation.
+
+The expandable section changes only how the frontend presents the information. It does not change backend execution, API responses, or workflow behavior.
+
+### 8.5 Presentation and Decision Boundaries
 
 The frontend is responsible for displaying the workflow result in a clear and business-oriented format.
 
@@ -8386,7 +9453,7 @@ The backend remains responsible for:
 
 The frontend does not calculate a replacement priority score or override the recommendation returned by the backend.
 
-Phase 3.1 improves the clarity and usability of the existing decision output without changing the underlying business logic.
+Phase 3.1 improves the clarity and usability of the existing decision output while keeping the full technical journey accessible through Explainability & Audit.
 
 ## 9. Docker Deployment Architecture
 
@@ -8452,7 +9519,7 @@ The application is deployed on Render using two independent Docker-based Web Ser
 3. The frontend makes same-origin requests under `/api/`.
 4. Nginx forwards those requests to the backend URL configured through `BACKEND_URL`.
 5. FastAPI executes the existing deterministic workflow and returns the response.
-6. The frontend displays agent outputs, shared workflow context, recommendation, explanation, suggested next action, and audit reference.
+6. The frontend presents the business recommendation and makes the detailed technical workflow information available through Explainability & Audit.
 
 ### 10.4 Environment Configuration
 
@@ -8482,13 +9549,13 @@ If Gemini is not configured or is unavailable, the workflow retains its determin
 - Audit records remain in process-local memory and may be lost when the backend restarts or is replaced.
 - No persistent database or external audit storage is configured.
 
-### 10.6 Phase 3.1 Production Deployment
+### 10.6 Earlier Phase 3.1 Production Deployment
 
-Phase 3.1 frontend changes were merged into the GitHub `main` branch and deployed through the existing Render services.
+The earlier Phase 3.1 recommendation experience changes were merged into the GitHub `main` branch and deployed through the existing Render services.
 
-The deployed frontend and backend were confirmed as Live after deployment.
+The deployed frontend and backend were confirmed as Live after that deployment.
 
-The production frontend was refreshed and validated against the updated recommendation experience.
+The production frontend was refreshed and validated against the recommendation experience.
 
 The following four scenarios were successfully checked on the deployed application:
 
@@ -8501,7 +9568,9 @@ The following four scenarios were successfully checked on the deployed applicati
 
 The recommendation explanations and suggested next actions were also verified for all four outcomes.
 
-The Phase 3.1 deployment changes the business-facing presentation of the application. It does not introduce new backend services or change the existing deterministic workflow.
+The earlier deployment changed the business-facing recommendation presentation. It did not introduce new backend services or change the existing deterministic workflow.
+
+The subsequent Explainability & Audit separation is a further frontend productization correction. Its local validation is documented in Section 14.5. Production verification of that latest correction must be performed after its corresponding deployment.
 
 ## 11. Technology and Design Constraints
 
@@ -8532,7 +9601,8 @@ The workflow preserves deterministic business authority:
 - The Gemini response is validated before acceptance; failures and invalid responses retain the deterministic explanation.
 - The execution trace records provider, model, status, and reason for the Gemini enhancement.
 - The complete execution trace is preserved in the audit record.
-- The frontend presents the recommendation, explanation, score information, and suggested next action.
+- The normal frontend screen focuses on the business recommendation and suggested next action.
+- The Explainability & Audit section retains access to technical workflow information.
 - The frontend does not override deterministic recommendations or calculate alternative business decisions.
 
 The following capabilities remain outside the current scope:
@@ -8558,9 +9628,9 @@ The controlled Gemini enhancement improves explanation readability without chang
 
 The Phase 3.1 product experience makes the resulting recommendations easier for business users to understand and act upon through explanatory context and suggested next actions.
 
-The architecture makes workflow execution, selected routes, triggering conditions, LLM execution metadata, recommendation evidence, and audit trace information observable.
+The Explainability & Audit section preserves technical transparency by making the complete workflow journey accessible when required, without placing internal execution details in the normal business-facing experience.
 
-The overall design maintains a clear separation between deterministic backend decision-making and frontend presentation.
+The overall design maintains a clear separation between deterministic backend decision-making, business-facing frontend presentation, and technical workflow inspection.
 
 ## 13. Historical Implementation — Phase 2.1 Linear Orchestration
 
@@ -8654,20 +9724,19 @@ Subsequent phases introduced conditional routing and controlled LLM explanation 
 
 Phase 3.1 improves the business-facing experience of APEX by making deterministic lead prioritization results easier to understand and use.
 
-The objective is to move beyond displaying a recommendation and score alone. The interface now provides business-oriented explanatory context and a suggested next action for each recommendation outcome.
+The objective is to move beyond displaying a recommendation and score alone. The interface provides business-oriented explanatory context and a suggested next action for each recommendation outcome.
 
 The enhancement preserves the original Phase 2 visual identity, including its dark navy and gold design.
 
 ### 14.2 Recommendation Experience
 
-The recommendation presentation includes:
+The business-facing recommendation presentation includes:
 
 - Final recommendation label.
 - Priority score and available score breakdown.
 - Recommendation explanation.
 - Suggested next action.
-- Supporting workflow evidence and agent outputs.
-- Audit information.
+- Supporting business evidence and triggered rules.
 
 The recommendation explanation communicates why the outcome matters to the sales team.
 
@@ -8700,28 +9769,56 @@ It does not:
 
 The existing API, agent responsibilities, and deterministic workflow remain the source of truth.
 
-### 14.5 Phase 3.1 Validation
+### 14.5 Business Experience Separation and Validation
 
-Phase 3.1 validation included:
+The subsequent Phase 3.1 frontend correction separates the normal business-facing recommendation experience from the technical execution and audit information.
 
-- TypeScript validation using `npx tsc --noEmit`.
-- Frontend production build using `npm run build`.
-- Docker frontend image rebuild.
-- Local Docker Compose application validation.
-- Visual confirmation of the restored dark navy and gold interface.
-- Verification of recommendation explanations and suggested next actions.
-- Testing of HOT, WARM, STALE, and missing-contact scenarios.
-- GitHub pull request merge into `main`.
-- Repomix regeneration following the merge.
-- Automatic Render deployment of the updated `main` branch.
-- Production verification of both frontend and backend service status.
-- Production scenario testing for all four recommendation outcomes.
+**Business-facing screen:**
 
-All four recommendation scenarios were successfully validated in the deployed application.
+- Lead information and engagement context remain visible.
+- Recommendation outcome and priority remain visible.
+- Recommendation explanation and business evidence remain accessible.
+- Suggested next action remains visible.
+- Internal agent execution details and raw JSON are not exposed in the normal view.
 
-The frontend and backend Render services were confirmed as Live.
+**Explainability & Audit:**
 
-**Phase 3.1 result:** The existing deterministic lead prioritization workflow was successfully presented through an improved, business-oriented recommendation experience without changing its underlying decision logic.
+- The section is collapsed by default.
+- Expanding it reveals run-scoped shared workflow context.
+- The five-agent execution timeline and structured outputs remain available.
+- LangGraph routing and execution trace remain available.
+- Gemini metadata and fallback information remain available when returned by the workflow.
+- Audit information and relevant raw JSON remain accessible.
+
+**Functional validation:**
+
+All four seeded scenarios were tested through the local application:
+
+| Scenario | Expected recommendation | Score | Result |
+|---|---|---:|---|
+| HOT | `FOLLOW_UP_NOW` | 95 | Passed |
+| WARM | `FOLLOW_UP_SOON` | 65 | Passed |
+| STALE | `NURTURE` | 0 | Passed |
+| Missing contact | `REQUEST_DATA` | 0 | Passed |
+
+The missing-contact scenario correctly followed the mandatory-data validation path and returned `REQUEST_DATA`. It stopped after the Lead Intake Agent rather than executing the remaining analytical agents. This is the expected incomplete-input behaviour.
+
+**Frontend validation:**
+
+- TypeScript validation using `npx tsc --noEmit` — passed.
+- Frontend production build using `npm run build` — passed.
+- Docker frontend image rebuild — completed successfully.
+- Local Docker Compose application — frontend and backend running and healthy.
+- Normal business-facing screen separation — verified.
+- Explainability & Audit expansion — verified.
+- Four recommendation scenarios — verified.
+- Responsive layout checks at 1440px, 768px, 390px, and 320px — completed.
+
+The latest Explainability & Audit separation has been validated locally. Its production deployment and production verification are a separate subsequent step.
+
+The frontend correction does not change the deterministic scoring model, recommendation rules, LangGraph routing, Gemini safeguards, backend architecture, or API decision authority.
+
+**Phase 3.1 result:** The application presents a focused business-facing recommendation experience while retaining the complete technical workflow and audit journey for reviewers through Explainability & Audit.
 </file>
 
 <file path="README.md">
@@ -8732,7 +9829,7 @@ The frontend and backend Render services were confirmed as Live.
 **Domain:** Sales Operations  
 **Product:** APEX — Lead Intelligence Platform  
 **Product Version:** 1.0.0  
-**Current Phase:** Phase 3.1 — Business Recommendation Experience
+**Current Phase:** Phase 3.1 — Business Experience Separation & Productization
 
 ## 1. Overview
 
@@ -8744,7 +9841,7 @@ Five specialized agents are orchestrated through a LangGraph `StateGraph` with d
 
 An optional, controlled Google Gemini service enhances the readability of the deterministic explanation. Gemini receives structured decision evidence, not the lead identifier, and cannot change the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the application retains the original deterministic explanation.
 
-Phase 3.1 improves the frontend recommendation experience by providing clearer explanations and suggested next actions for all four recommendation outcomes.
+Phase 3.1 improves the frontend product experience by separating the normal business-facing recommendation screen from the detailed technical execution and audit information. Business users can focus on the lead, recommendation, evidence, and suggested next action, while reviewers can expand the Explainability & Audit section to inspect the underlying workflow.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -8754,7 +9851,7 @@ Sales teams need a consistent way to identify which leads require immediate atte
 
 Manual prioritization can be inconsistent and difficult to audit.
 
-APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules. The frontend presents the resulting recommendation with supporting context and a suggested next action.
+APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules. The frontend presents the resulting recommendation with supporting context and a suggested next action, while retaining access to the full technical execution record for review.
 
 ## 3. Recommendations
 
@@ -8769,18 +9866,37 @@ The system supports four recommendation types:
 
 Each completed workflow provides a priority score, score breakdown, triggered business rules, explanation, and audit reference.
 
-### Phase 3.1 — Recommendation Experience
+### Phase 3.1 — Business Experience Separation & Productization
 
-Phase 3.1 improves how the application communicates its deterministic recommendations.
+Phase 3.1 improves how the application communicates deterministic recommendations to business users and how it exposes technical execution details to reviewers.
 
-The frontend provides:
+The normal business-facing screen presents:
 
-- A recommendation explanation that gives users additional context about the outcome.
-- A suggested next action that helps users understand the appropriate operational response.
-- Consistent presentation across all four recommendation types.
-- The existing priority score, evidence, agent outputs, and audit information.
+- Lead information and engagement context.
+- Recommendation outcome and priority score.
+- Recommendation explanation and business-readable reasons.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
 
-The suggested actions are guidance for the sales team. They do not trigger automatic customer communication or external actions.
+The normal screen does not expose the internal agent execution timeline, raw structured agent outputs, workflow trace, or detailed audit JSON.
+
+### Explainability & Audit
+
+The frontend provides a dedicated **Explainability & Audit** section that is collapsed by default.
+
+When expanded, it exposes the technical journey associated with the workflow, including:
+
+- Run-scoped shared workflow context.
+- Agent execution timeline and execution statuses.
+- Structured outputs from the agents.
+- LangGraph execution trace and conditional routing information.
+- Gemini provider, model, execution status, and fallback information when available.
+- Audit reference and complete audit record.
+- Relevant raw JSON for technical inspection.
+
+This separation keeps the normal experience focused on business decisions while preserving the technical transparency required for internship review, debugging, and workflow verification.
+
+The suggested actions are operational guidance for the sales team. They do not trigger automatic customer communication or external actions.
 
 | Recommendation | Suggested operational response |
 |---|---|
@@ -8927,6 +10043,7 @@ These are illustrative sample records, not live customer data.
 - TypeScript
 - Vite
 - CSS
+- Native HTML expandable details section for Explainability & Audit
 
 **Containerization and Deployment**
 
@@ -9079,15 +10196,17 @@ The frontend Render service uses the following environment variable:
 
 Nginx uses this variable to forward browser requests under `/api/` to the backend service. This preserves the frontend's same-origin API request pattern without requiring a separate browser-to-backend CORS configuration.
 
-**Deployment validation:**
+**Previously deployed Phase 3.1 validation:**
 
-The deployed application was checked after the Phase 3.1 changes.
+The deployed application was checked after the earlier Phase 3.1 recommendation experience changes.
 
 - Public frontend loaded successfully.
 - Updated recommendation interface was visible.
 - Backend health endpoint was available.
 - All four seeded scenarios were exercised through the deployed frontend.
 - The four recommendation outcomes were returned as expected.
+
+The latest Explainability & Audit separation has been validated locally. Its production deployment should be verified after the corresponding changes are merged and deployed.
 
 **Operational limitations:**
 
@@ -9110,19 +10229,22 @@ The deployed application was checked after the Phase 3.1 changes.
 
 ### Automated and Frontend Validation
 
-The following Phase 3.1 frontend validation was completed:
+The following frontend validation was completed for the Phase 3.1 experience separation:
 
 - TypeScript validation using `npx tsc --noEmit` — passed.
 - Frontend production build using `npm run build` — passed.
 - Docker frontend image rebuild — completed successfully.
-- Local Docker application — frontend and backend running.
-- Production Render application — updated interface verified.
+- Local Docker application — frontend and backend running and healthy.
+- Business-facing screen separation — verified.
+- Explainability & Audit expansion — verified.
+- Four recommendation scenarios — verified.
+- Responsive layout checks — completed at 1440px, 768px, 390px, and 320px.
 
 The previously documented backend automated test result was 17 passed during Phase 2.3. This historical result should not be interpreted as a newly executed Phase 3.1 backend test run.
 
 ### Phase 3.1 Scenario Validation
 
-All four scenarios were tested through the local application and the deployed Render frontend.
+All four scenarios were tested through the local application.
 
 | Scenario | Expected recommendation | Score | Result |
 |---|---|---:|---|
@@ -9136,6 +10258,38 @@ The HOT, WARM, and STALE scenarios completed the normal analytical workflow.
 The missing-contact scenario correctly followed the mandatory-data validation path and returned `REQUEST_DATA`. It stopped after the Lead Intake Agent rather than executing the remaining analytical agents. This is the expected incomplete-input behavior.
 
 The application displayed the corresponding recommendation explanations and suggested next actions.
+
+### Business Experience and Explainability Validation
+
+The updated frontend was checked to confirm that the normal business-facing experience and technical inspection experience are separated.
+
+**Normal business-facing screen:**
+
+- Lead information and engagement context remain visible.
+- Recommendation, priority, explanation, evidence, and suggested next action remain accessible.
+- Internal agent execution details and raw JSON are not exposed in the normal screen.
+
+**Explainability & Audit:**
+
+- The section is collapsed by default.
+- Expanding it reveals run-scoped workflow context.
+- The agent execution timeline and structured outputs remain available.
+- LangGraph routing and execution trace remain available.
+- Gemini metadata and fallback information remain available when returned by the workflow.
+- Audit information and relevant raw JSON remain accessible.
+
+### Responsive Layout Validation
+
+The updated frontend was checked at the following viewport widths:
+
+| Viewport | Layout | Result |
+|---:|---|---|
+| 1440px | Desktop | Passed |
+| 768px | Tablet | Passed |
+| 390px | Mobile | Passed |
+| 320px | Narrow mobile | Passed |
+
+The business-facing content remained readable, and the Explainability & Audit section remained usable across the tested layouts.
 
 ### Docker Validation (Phase 1.3)
 
@@ -9170,6 +10324,9 @@ Audit records are stored in process memory and are not persistent across backend
 - Validates LLM output and falls back to the original deterministic explanation on provider errors, timeouts, missing configuration, or invalid responses.
 - Records workflow execution, routing decisions, and Gemini provider/model/status/reason in the execution trace and audit record.
 - Presents clearer recommendation explanations and suggested next actions for all four recommendation outcomes.
+- Separates the normal business-facing recommendation experience from technical workflow inspection.
+- Provides a collapsed-by-default Explainability & Audit section for technical review.
+- Retains shared workflow context, agent execution information, structured outputs, routing trace, LLM metadata, and audit details for inspection.
 - Supports local Docker-based execution and cloud deployment on Render.
 - Does not automatically send messages or contact leads.
 
@@ -9199,7 +10356,9 @@ The application combines five specialized deterministic agents, shared workflow 
 
 The controlled Gemini enhancement introduced in Post 2.3 improves explanation readability while keeping deterministic business decisions authoritative.
 
-Phase 3.1 builds on this foundation by improving the business recommendation experience. Users receive clearer explanations and suggested next actions for each recommendation outcome, while the underlying deterministic workflow and API behavior remain unchanged.
+Phase 3.1 builds on this foundation by separating the business-facing recommendation experience from the detailed technical execution view. Business users can focus on the recommendation and next action, while reviewers retain access to the full workflow and audit information through Explainability & Audit.
+
+The Phase 3.1 frontend productization changes do not alter the deterministic scoring model, recommendation rules, LangGraph routing, Gemini safeguards, backend architecture, or API decision authority.
 
 The project demonstrates the design, implementation, testing, local Docker validation, and Render deployment of a deterministic multi-agent lead prioritization application.
 </file>

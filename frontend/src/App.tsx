@@ -401,11 +401,59 @@ function App() {
 
         {result && context && (
           <>
+            {/* BUSINESS-FACING SECTION 1: LEAD INPUT */}
+
+            <section className="result-panel">
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">BUSINESS INPUT</p>
+                  <h3>Lead Record & Engagement</h3>
+                  <p>The lead information used for this prioritization.</p>
+                </div>
+              </div>
+
+              <div className="input-grid">
+                {leadFields.map(([label, key]) => {
+                  const value = context.lead_record[key]
+                  const displayValue =
+                    key.endsWith('_at') ? formatDate(value) : formatValue(value)
+
+                  return (
+                    <div className="data-item" key={key}>
+                      <span>{label}</span>
+                      <strong>{displayValue}</strong>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <h4>Engagement Events ({context.engagement_events.length})</h4>
+              {context.engagement_events.length > 0 ? (
+                <div className="event-list">
+                  {context.engagement_events.map((event, index) => (
+                    <div
+                      className="event-row"
+                      key={String(event.event_id ?? index)}
+                    >
+                      <strong>{formatValue(event.event_type)}</strong>
+                      <span>{formatValue(event.event_id)}</span>
+                      <small>{formatDate(event.occurred_at)}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted-text">No engagement events supplied.</p>
+              )}
+            </section>
+
+            {/* BUSINESS-FACING SECTION 2: RECOMMENDATION */}
+
             <section className="result-panel">
               <div className="section-heading">
                 <div>
                   <p className="eyebrow">WORKFLOW RESULT</p>
                   <h3>Priority Recommendation</h3>
+                  <p>Recommended follow-up action based on the available lead evidence.</p>
                 </div>
                 <span className="completed-tag">COMPLETED</span>
               </div>
@@ -458,242 +506,54 @@ function App() {
                 </div>
               </div>
 
-              <div className="breakdown-section">
-                <h4>Score Breakdown</h4>
-                <div className="breakdown-grid">
-                  {Object.entries(result.explanation.score_breakdown).map(
-                    ([name, score]) => (
-                      <div className="breakdown-item" key={name}>
-                        <span>{name}</span>
-                        <strong>{score}</strong>
-                      </div>
-                    ),
-                  )}
+              {/* Keep validation feedback visible to business users. */}
+
+              {result.errors.length > 0 && (
+                <div
+                  className={
+                    result.recommendation.action === 'REQUEST_DATA'
+                      ? 'validation-message'
+                      : 'error-message'
+                  }
+                >
+                  {result.errors.join(', ')}
                 </div>
-              </div>
-
-              <div className="rules-section">
-                <h4>Triggered Business Rules</h4>
-                <div className="rule-list">
-                  {result.recommendation.triggered_rules.length > 0 ? (
-                    result.recommendation.triggered_rules.map((rule) => (
-                      <span className="rule-tag" key={rule}>
-                        {rule}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="muted-text">No rules recorded.</span>
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="result-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">01 / BUSINESS INPUT</p>
-                  <h3>Lead Record & Engagement</h3>
-                  <p>The input supplied to this workflow execution.</p>
-                </div>
-              </div>
-
-              <div className="input-grid">
-                {leadFields.map(([label, key]) => {
-                  const value = context.lead_record[key]
-                  const displayValue =
-                    key.endsWith('_at') ? formatDate(value) : formatValue(value)
-
-                  return (
-                    <div className="data-item" key={key}>
-                      <span>{label}</span>
-                      <strong>{displayValue}</strong>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <h4>Engagement Events ({context.engagement_events.length})</h4>
-              {context.engagement_events.length > 0 ? (
-                <div className="event-list">
-                  {context.engagement_events.map((event, index) => (
-                    <div
-                      className="event-row"
-                      key={String(event.event_id ?? index)}
-                    >
-                      <strong>{formatValue(event.event_type)}</strong>
-                      <span>{formatValue(event.event_id)}</span>
-                      <small>{formatDate(event.occurred_at)}</small>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="muted-text">No engagement events supplied.</p>
               )}
             </section>
 
-            <section className="result-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">02 / SHARED CONTEXT</p>
-                  <h3>Run-Scoped Shared Workflow Context</h3>
-                  <p>
-                    A shared context created for this workflow run and updated as agents execute.
-                  </p>
-                </div>
-                <span className="scenario-count">RUN-SCOPED</span>
-              </div>
-
-              <div className="context-meta">
-                <div className="data-item">
-                  <span>Workflow ID</span>
-                  <strong>{context.workflow_id}</strong>
-                </div>
-                <div className="data-item">
-                  <span>Started At</span>
-                  <strong>{formatDate(context.started_at)}</strong>
-                </div>
-              </div>
-
-              <div className="context-grid">
-                <div className="context-item">
-                  <span>Normalized Lead Snapshot</span>
-                  <strong>
-                    {context.validated_lead ? 'Available' : 'Not available'}
-                  </strong>
-                </div>
-                <div className="context-item">
-                  <span>Recency Score</span>
-                  <strong>{formatValue(context.recency_score)}</strong>
-                </div>
-                <div className="context-item">
-                  <span>Engagement Score</span>
-                  <strong>{formatValue(context.engagement_score)}</strong>
-                </div>
-                <div className="context-item">
-                  <span>Fit Score</span>
-                  <strong>{formatValue(context.fit_score)}</strong>
-                </div>
-                <div className="context-item">
-                  <span>Agent Outputs</span>
-                  <strong>{executedAgentKeys.length} recorded</strong>
-                </div>
-                <div className="context-item">
-                  <span>Workflow Errors</span>
-                  <strong>{context.errors.length}</strong>
-                </div>
-              </div>
-
-              <h4>Execution Summary</h4>
-              <div className="context-updates">
-                <div>
-                  <span>01</span> Lead record and engagement events initialized
-                </div>
-                <div>
-                  <span>02</span>
-                  Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
-                </div>
-                <div>
-                  <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
-                </div>
-                <div>
-                  <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
-                </div>
-                <div>
-                  <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
-                </div>
-              </div>
-
-              <p className="muted-text context-note">
-                This context belongs to one workflow execution. It is not permanent or long-term memory.
-              </p>
-            </section>
+            {/* BUSINESS-FACING SECTION 3: DECISION EVIDENCE */}
 
             <section className="result-panel">
               <div className="section-heading">
                 <div>
-                  <p className="eyebrow">03 / AGENT EXECUTION</p>
-                  <h3>Agent Workflow Timeline</h3>
-                  <p>Only agents with recorded outputs are shown as executed.</p>
-                </div>
-                <span className="scenario-count">
-                  {executedAgentKeys.length} EXECUTED
-                </span>
-              </div>
-
-              <div className="workflow-line">
-                {agentOrder.map((key, index) => {
-                  const output = executedOutputs[key]
-                  const definition = agentDefinitions[key]
-
-                  return (
-                    <article
-                      className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
-                      key={key}
-                    >
-                      <div className="agent-card-heading">
-                        <span className="agent-number">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
-                        <div>
-                          <h4>{definition.responsibility.split('.')[0]}</h4>
-                          <p>{definition.responsibility}</p>
-                        </div>
-                        <span
-                          className={
-                            output ? 'agent-status' : 'agent-skipped-status'
-                          }
-                        >
-                          {output ? 'Executed' : 'Not executed'}
-                        </span>
-                      </div>
-
-                      <div className="agent-detail-grid">
-                        <div>
-                          <span>Important Input</span>
-                          <strong>{definition.input}</strong>
-                        </div>
-                        <div>
-                          <span>Output</span>
-                          {output ? (
-                            <strong>{output.agent_name}</strong>
-                          ) : (
-                            <strong>None recorded</strong>
-                          )}
-                        </div>
-                      </div>
-
-                      {output && (
-                        <>
-                          <h5>Structured Output</h5>
-                          <pre className="json-output">
-                            {JSON.stringify(output, null, 2)}
-                          </pre>
-                        </>
-                      )}
-                    </article>
-                  )
-                })}
-              </div>
-            </section>
-
-            <section className="result-panel">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">04 / DECISION EVIDENCE</p>
+                  <p className="eyebrow">BUSINESS EVIDENCE</p>
                   <h3>Rules, Scores & Evidence</h3>
+                  <p>Key factors supporting the recommendation.</p>
                 </div>
               </div>
 
-              <h4>SLA Flags</h4>
+              <h4>Score Breakdown</h4>
+              <div className="breakdown-grid">
+                {Object.entries(result.explanation.score_breakdown).map(
+                  ([name, score]) => (
+                    <div className="breakdown-item" key={name}>
+                      <span>{name}</span>
+                      <strong>{formatValue(score)}</strong>
+                    </div>
+                  ),
+                )}
+              </div>
+
+              <h4>Triggered Business Rules</h4>
               <div className="rule-list">
-                {context.sla_flags.length > 0 ? (
-                  context.sla_flags.map((flag) => (
-                    <span className="rule-tag" key={flag}>
-                      {flag}
+                {result.recommendation.triggered_rules.length > 0 ? (
+                  result.recommendation.triggered_rules.map((rule) => (
+                    <span className="rule-tag" key={rule}>
+                      {rule}
                     </span>
                   ))
                 ) : (
-                  <span className="muted-text">No SLA flags recorded.</span>
+                  <span className="muted-text">No rules recorded.</span>
                 )}
               </div>
 
@@ -709,7 +569,7 @@ function App() {
 
               {result.explanation.limitations.length > 0 && (
                 <>
-                  <h4>Limitations and Errors</h4>
+                  <h4>Limitations</h4>
                   <ul className="reason-list">
                     {result.explanation.limitations.map((item, index) => (
                       <li key={index}>{item}</li>
@@ -719,92 +579,269 @@ function App() {
               )}
             </section>
 
-            <section className="audit-panel">
-              <div>
-                <p className="eyebrow">05 / AUDIT TRAIL</p>
-                <h3>Workflow Traceability</h3>
-                <p className="subtitle">
-                  Recorded execution details from the in-memory audit service.
-                </p>
+            {/* ADVANCED TECHNICAL DETAILS: CLOSED BY DEFAULT */}
+
+            <details className="explainability-panel">
+              <summary className="explainability-summary">
+                <span className="explainability-title">
+                  Explainability & Audit
+                </span>
+                <span className="explainability-description">
+                  Advanced technical details · Reviewer view
+                </span>
+                <span className="explainability-indicator" aria-hidden="true">
+                  +
+                </span>
+              </summary>
+
+              <div className="explainability-content">
+
+                {/* RUN-SCOPED SHARED WORKFLOW CONTEXT */}
+
+                <section className="result-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">01 / SHARED CONTEXT</p>
+                      <h3>Run-Scoped Shared Workflow Context</h3>
+                      <p>
+                        A shared context created for this workflow run and updated as agents execute.
+                      </p>
+                    </div>
+                    <span className="scenario-count">RUN-SCOPED</span>
+                  </div>
+
+                  <div className="context-meta">
+                    <div className="data-item">
+                      <span>Workflow ID</span>
+                      <strong>{context.workflow_id}</strong>
+                    </div>
+                    <div className="data-item">
+                      <span>Started At</span>
+                      <strong>{formatDate(context.started_at)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="context-grid">
+                    <div className="context-item">
+                      <span>Normalized Lead Snapshot</span>
+                      <strong>
+                        {context.validated_lead ? 'Available' : 'Not available'}
+                      </strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Recency Score</span>
+                      <strong>{formatValue(context.recency_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Engagement Score</span>
+                      <strong>{formatValue(context.engagement_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Fit Score</span>
+                      <strong>{formatValue(context.fit_score)}</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Agent Outputs</span>
+                      <strong>{executedAgentKeys.length} recorded</strong>
+                    </div>
+                    <div className="context-item">
+                      <span>Workflow Errors</span>
+                      <strong>{context.errors.length}</strong>
+                    </div>
+                  </div>
+
+                  <h4>Execution Summary</h4>
+                  <div className="context-updates">
+                    <div>
+                      <span>01</span> Lead record and engagement events initialized
+                    </div>
+                    <div>
+                      <span>02</span>
+                      Lead Intake outcome: {context.agent_outputs.lead_intake?.status ?? 'Not recorded'}
+                    </div>
+                    <div>
+                      <span>03</span> {executedAgentKeys.length} agent output(s) recorded in shared context
+                    </div>
+                    <div>
+                      <span>04</span> Final recommendation: {context.final_recommendation?.action ?? 'Not available'}
+                    </div>
+                    <div>
+                      <span>05</span> Audit reference: {context.audit_reference ?? 'Not available'}
+                    </div>
+                  </div>
+
+                  <p className="muted-text context-note">
+                    This context belongs to one workflow execution. It is not permanent or long-term memory.
+                  </p>
+                </section>
+
+                {/* FIVE-AGENT EXECUTION TIMELINE */}
+
+                <section className="result-panel">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">02 / AGENT EXECUTION</p>
+                      <h3>Agent Workflow Timeline</h3>
+                      <p>Only agents with recorded outputs are shown as executed.</p>
+                    </div>
+                    <span className="scenario-count">
+                      {executedAgentKeys.length} EXECUTED
+                    </span>
+                  </div>
+
+                  <div className="workflow-line">
+                    {agentOrder.map((key, index) => {
+                      const output = executedOutputs[key]
+                      const definition = agentDefinitions[key]
+
+                      return (
+                        <article
+                          className={`agent-card ${output ? 'agent-executed' : 'agent-skipped'}`}
+                          key={key}
+                        >
+                          <div className="agent-card-heading">
+                            <span className="agent-number">
+                              {String(index + 1).padStart(2, '0')}
+                            </span>
+                            <div>
+                              <h4>{definition.responsibility.split('.')[0]}</h4>
+                              <p>{definition.responsibility}</p>
+                            </div>
+                            <span
+                              className={
+                                output ? 'agent-status' : 'agent-skipped-status'
+                              }
+                            >
+                              {output ? 'Executed' : 'Not executed'}
+                            </span>
+                          </div>
+
+                          <div className="agent-detail-grid">
+                            <div>
+                              <span>Important Input</span>
+                              <strong>{definition.input}</strong>
+                            </div>
+                            <div>
+                              <span>Output</span>
+                              {output ? (
+                                <strong>{output.agent_name}</strong>
+                              ) : (
+                                <strong>None recorded</strong>
+                              )}
+                            </div>
+                          </div>
+
+                          {output && (
+                            <>
+                              <h5>Structured Output</h5>
+                              <pre className="json-output">
+                                {JSON.stringify(output, null, 2)}
+                              </pre>
+                            </>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+
+                {/* AUDIT TRAIL, EXECUTION TRACE AND GEMINI METADATA */}
+
+                <section className="audit-panel">
+                  <div>
+                    <p className="eyebrow">03 / AUDIT TRAIL</p>
+                    <h3>Workflow Traceability</h3>
+                    <p className="subtitle">
+                      Recorded execution details from the in-memory audit service.
+                    </p>
+                  </div>
+
+                  <div className="audit-details">
+                    <div>
+                      <span>Workflow ID</span>
+                      <strong>{result.workflow_id}</strong>
+                    </div>
+                    <div>
+                      <span>Audit Reference</span>
+                      <strong>{result.audit_reference}</strong>
+                    </div>
+                    <div>
+                      <span>Lead ID</span>
+                      <strong>{result.lead_id}</strong>
+                    </div>
+                    <div>
+                      <span>Audit Timestamp</span>
+                      <strong>
+                        {result.audit_record
+                          ? formatDate(result.audit_record.timestamp)
+                          : 'Not available'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Recorded Agent Sequence</span>
+                      <strong>
+                        {result.audit_record?.agent_sequence.join(' → ') ||
+                          'No agents recorded'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Audit Storage</span>
+                      <strong>In-memory · Process-local</strong>
+                    </div>
+                  </div>
+
+                  {result.audit_record && (
+                    <>
+                      <h4>Execution Trace & LLM Metadata</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.execution_trace,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Recorded Recommendation</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.final_recommendation,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Recorded Agent Outputs</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(
+                          result.audit_record.agent_outputs,
+                          null,
+                          2,
+                        )}
+                      </pre>
+
+                      <h4>Complete Audit Record · Raw JSON</h4>
+                      <pre className="json-output">
+                        {JSON.stringify(result.audit_record, null, 2)}
+                      </pre>
+                    </>
+                  )}
+
+                  {result.audit_record?.errors &&
+                    result.audit_record.errors.length > 0 && (
+                      <>
+                        <h4>Recorded Execution Errors</h4>
+                        <pre className="json-output">
+                          {JSON.stringify(
+                            result.audit_record.errors,
+                            null,
+                            2,
+                          )}
+                        </pre>
+                      </>
+                    )}
+                </section>
               </div>
-
-              <div className="audit-details">
-                <div>
-                  <span>Workflow ID</span>
-                  <strong>{result.workflow_id}</strong>
-                </div>
-                <div>
-                  <span>Audit Reference</span>
-                  <strong>{result.audit_reference}</strong>
-                </div>
-                <div>
-                  <span>Lead ID</span>
-                  <strong>{result.lead_id}</strong>
-                </div>
-                <div>
-                  <span>Audit Timestamp</span>
-                  <strong>
-                    {result.audit_record
-                      ? formatDate(result.audit_record.timestamp)
-                      : 'Not available'}
-                  </strong>
-                </div>
-                <div>
-                  <span>Recorded Agent Sequence</span>
-                  <strong>
-                    {result.audit_record?.agent_sequence.join(' → ') ||
-                      'No agents recorded'}
-                  </strong>
-                </div>
-                <div>
-                  <span>Audit Storage</span>
-                  <strong>In-memory · Process-local</strong>
-                </div>
-              </div>
-
-              {result.audit_record && (
-                <>
-                  <h4>Execution Trace & LLM Metadata</h4>
-                  <pre className="json-output">
-                    {JSON.stringify(
-                      result.audit_record.execution_trace,
-                      null,
-                      2,
-                    )}
-                  </pre>
-
-                  <h4>Recorded Recommendation</h4>
-                  <pre className="json-output">
-                    {JSON.stringify(
-                      result.audit_record.final_recommendation,
-                      null,
-                      2,
-                    )}
-                  </pre>
-
-                  <h4>Recorded Agent Outputs</h4>
-                  <pre className="json-output">
-                    {JSON.stringify(
-                      result.audit_record.agent_outputs,
-                      null,
-                      2,
-                    )}
-                  </pre>
-                </>
-              )}
-
-              {result.errors.length > 0 && (
-                <p
-                  className={
-                    result.recommendation.action === 'REQUEST_DATA'
-                      ? 'validation-message'
-                      : 'error-message'
-                  }
-                >
-                  {result.errors.join(', ')}
-                </p>
-              )}
-            </section>
+            </details>
           </>
         )}
 
@@ -813,8 +850,8 @@ function App() {
             <div className="empty-icon">↗</div>
             <h3>Ready to evaluate leads</h3>
             <p>
-              Select a scenario and run prioritization to explore the business input,
-              shared workflow context, agent outputs, decision evidence and audit trail.
+              Select a scenario and run prioritization to explore the lead information,
+              business recommendation, supporting evidence and suggested next action.
             </p>
           </div>
         )}

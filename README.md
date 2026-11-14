@@ -5,7 +5,7 @@
 **Domain:** Sales Operations  
 **Product:** APEX — Lead Intelligence Platform  
 **Product Version:** 1.0.0  
-**Current Phase:** Phase 3.1 — Business Recommendation Experience
+**Current Phase:** Phase 3.1 — Business Experience Separation & Productization
 
 ## 1. Overview
 
@@ -17,7 +17,7 @@ Five specialized agents are orchestrated through a LangGraph `StateGraph` with d
 
 An optional, controlled Google Gemini service enhances the readability of the deterministic explanation. Gemini receives structured decision evidence, not the lead identifier, and cannot change the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the application retains the original deterministic explanation.
 
-Phase 3.1 improves the frontend recommendation experience by providing clearer explanations and suggested next actions for all four recommendation outcomes.
+Phase 3.1 improves the frontend product experience by separating the normal business-facing recommendation screen from the detailed technical execution and audit information. Business users can focus on the lead, recommendation, evidence, and suggested next action, while reviewers can expand the Explainability & Audit section to inspect the underlying workflow.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -27,7 +27,7 @@ Sales teams need a consistent way to identify which leads require immediate atte
 
 Manual prioritization can be inconsistent and difficult to audit.
 
-APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules. The frontend presents the resulting recommendation with supporting context and a suggested next action.
+APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules. The frontend presents the resulting recommendation with supporting context and a suggested next action, while retaining access to the full technical execution record for review.
 
 ## 3. Recommendations
 
@@ -42,18 +42,37 @@ The system supports four recommendation types:
 
 Each completed workflow provides a priority score, score breakdown, triggered business rules, explanation, and audit reference.
 
-### Phase 3.1 — Recommendation Experience
+### Phase 3.1 — Business Experience Separation & Productization
 
-Phase 3.1 improves how the application communicates its deterministic recommendations.
+Phase 3.1 improves how the application communicates deterministic recommendations to business users and how it exposes technical execution details to reviewers.
 
-The frontend provides:
+The normal business-facing screen presents:
 
-- A recommendation explanation that gives users additional context about the outcome.
-- A suggested next action that helps users understand the appropriate operational response.
-- Consistent presentation across all four recommendation types.
-- The existing priority score, evidence, agent outputs, and audit information.
+- Lead information and engagement context.
+- Recommendation outcome and priority score.
+- Recommendation explanation and business-readable reasons.
+- Supporting evidence and triggered business rules.
+- Suggested next action.
 
-The suggested actions are guidance for the sales team. They do not trigger automatic customer communication or external actions.
+The normal screen does not expose the internal agent execution timeline, raw structured agent outputs, workflow trace, or detailed audit JSON.
+
+### Explainability & Audit
+
+The frontend provides a dedicated **Explainability & Audit** section that is collapsed by default.
+
+When expanded, it exposes the technical journey associated with the workflow, including:
+
+- Run-scoped shared workflow context.
+- Agent execution timeline and execution statuses.
+- Structured outputs from the agents.
+- LangGraph execution trace and conditional routing information.
+- Gemini provider, model, execution status, and fallback information when available.
+- Audit reference and complete audit record.
+- Relevant raw JSON for technical inspection.
+
+This separation keeps the normal experience focused on business decisions while preserving the technical transparency required for internship review, debugging, and workflow verification.
+
+The suggested actions are operational guidance for the sales team. They do not trigger automatic customer communication or external actions.
 
 | Recommendation | Suggested operational response |
 |---|---|
@@ -200,6 +219,7 @@ These are illustrative sample records, not live customer data.
 - TypeScript
 - Vite
 - CSS
+- Native HTML expandable details section for Explainability & Audit
 
 **Containerization and Deployment**
 
@@ -352,15 +372,17 @@ The frontend Render service uses the following environment variable:
 
 Nginx uses this variable to forward browser requests under `/api/` to the backend service. This preserves the frontend's same-origin API request pattern without requiring a separate browser-to-backend CORS configuration.
 
-**Deployment validation:**
+**Previously deployed Phase 3.1 validation:**
 
-The deployed application was checked after the Phase 3.1 changes.
+The deployed application was checked after the earlier Phase 3.1 recommendation experience changes.
 
 - Public frontend loaded successfully.
 - Updated recommendation interface was visible.
 - Backend health endpoint was available.
 - All four seeded scenarios were exercised through the deployed frontend.
 - The four recommendation outcomes were returned as expected.
+
+The latest Explainability & Audit separation has been validated locally. Its production deployment should be verified after the corresponding changes are merged and deployed.
 
 **Operational limitations:**
 
@@ -383,19 +405,22 @@ The deployed application was checked after the Phase 3.1 changes.
 
 ### Automated and Frontend Validation
 
-The following Phase 3.1 frontend validation was completed:
+The following frontend validation was completed for the Phase 3.1 experience separation:
 
 - TypeScript validation using `npx tsc --noEmit` — passed.
 - Frontend production build using `npm run build` — passed.
 - Docker frontend image rebuild — completed successfully.
-- Local Docker application — frontend and backend running.
-- Production Render application — updated interface verified.
+- Local Docker application — frontend and backend running and healthy.
+- Business-facing screen separation — verified.
+- Explainability & Audit expansion — verified.
+- Four recommendation scenarios — verified.
+- Responsive layout checks — completed at 1440px, 768px, 390px, and 320px.
 
 The previously documented backend automated test result was 17 passed during Phase 2.3. This historical result should not be interpreted as a newly executed Phase 3.1 backend test run.
 
 ### Phase 3.1 Scenario Validation
 
-All four scenarios were tested through the local application and the deployed Render frontend.
+All four scenarios were tested through the local application.
 
 | Scenario | Expected recommendation | Score | Result |
 |---|---|---:|---|
@@ -409,6 +434,38 @@ The HOT, WARM, and STALE scenarios completed the normal analytical workflow.
 The missing-contact scenario correctly followed the mandatory-data validation path and returned `REQUEST_DATA`. It stopped after the Lead Intake Agent rather than executing the remaining analytical agents. This is the expected incomplete-input behavior.
 
 The application displayed the corresponding recommendation explanations and suggested next actions.
+
+### Business Experience and Explainability Validation
+
+The updated frontend was checked to confirm that the normal business-facing experience and technical inspection experience are separated.
+
+**Normal business-facing screen:**
+
+- Lead information and engagement context remain visible.
+- Recommendation, priority, explanation, evidence, and suggested next action remain accessible.
+- Internal agent execution details and raw JSON are not exposed in the normal screen.
+
+**Explainability & Audit:**
+
+- The section is collapsed by default.
+- Expanding it reveals run-scoped workflow context.
+- The agent execution timeline and structured outputs remain available.
+- LangGraph routing and execution trace remain available.
+- Gemini metadata and fallback information remain available when returned by the workflow.
+- Audit information and relevant raw JSON remain accessible.
+
+### Responsive Layout Validation
+
+The updated frontend was checked at the following viewport widths:
+
+| Viewport | Layout | Result |
+|---:|---|---|
+| 1440px | Desktop | Passed |
+| 768px | Tablet | Passed |
+| 390px | Mobile | Passed |
+| 320px | Narrow mobile | Passed |
+
+The business-facing content remained readable, and the Explainability & Audit section remained usable across the tested layouts.
 
 ### Docker Validation (Phase 1.3)
 
@@ -443,6 +500,9 @@ Audit records are stored in process memory and are not persistent across backend
 - Validates LLM output and falls back to the original deterministic explanation on provider errors, timeouts, missing configuration, or invalid responses.
 - Records workflow execution, routing decisions, and Gemini provider/model/status/reason in the execution trace and audit record.
 - Presents clearer recommendation explanations and suggested next actions for all four recommendation outcomes.
+- Separates the normal business-facing recommendation experience from technical workflow inspection.
+- Provides a collapsed-by-default Explainability & Audit section for technical review.
+- Retains shared workflow context, agent execution information, structured outputs, routing trace, LLM metadata, and audit details for inspection.
 - Supports local Docker-based execution and cloud deployment on Render.
 - Does not automatically send messages or contact leads.
 
@@ -472,6 +532,8 @@ The application combines five specialized deterministic agents, shared workflow 
 
 The controlled Gemini enhancement introduced in Post 2.3 improves explanation readability while keeping deterministic business decisions authoritative.
 
-Phase 3.1 builds on this foundation by improving the business recommendation experience. Users receive clearer explanations and suggested next actions for each recommendation outcome, while the underlying deterministic workflow and API behavior remain unchanged.
+Phase 3.1 builds on this foundation by separating the business-facing recommendation experience from the detailed technical execution view. Business users can focus on the recommendation and next action, while reviewers retain access to the full workflow and audit information through Explainability & Audit.
+
+The Phase 3.1 frontend productization changes do not alter the deterministic scoring model, recommendation rules, LangGraph routing, Gemini safeguards, backend architecture, or API decision authority.
 
 The project demonstrates the design, implementation, testing, local Docker validation, and Render deployment of a deterministic multi-agent lead prioritization application.
