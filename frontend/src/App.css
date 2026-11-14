@@ -296,6 +296,56 @@ button {
   line-height: 1.6;
 }
 
+.recommendation-context {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--gold);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.next-action-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 20px 23px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--gold);
+  border-radius: 11px;
+  background: var(--surface-raised);
+}
+
+.next-action-icon {
+  display: flex;
+  flex: 0 0 36px;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gold);
+  color: #101a2c;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.next-action-card h4 {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.next-action-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .score-value {
   margin: 14px 0;
   color: var(--gold);
