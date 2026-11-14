@@ -343,7 +343,7 @@ The public backend health endpoint returned:
 - Render free services may spin down after inactivity, resulting in a delay during the first request.
 - Audit records, including their complete execution traces, remain in process-local memory. They are not durable and may be lost when the backend restarts.
 - No persistent database or external audit storage has been configured.
-- No application secrets are required for the current deployment.
+- The Gemini API key is configured securely as a backend environment secret in Render. It is not committed to GitHub. The local `backend/.env` file is excluded from Git, and `backend/.env.example` contains placeholder values only.
 
 ## 10. API Endpoints
 
@@ -379,7 +379,7 @@ npm run lint
 
 Current validation results:
 
-- Backend: 9 tests passed.
+- Backend: 17 tests passed (Phase 2.3).
 - Frontend production build: passed.
 - Frontend ESLint: passed.
 - Hot, warm, and stale scenarios: manually tested successfully through the frontend.
@@ -418,7 +418,7 @@ Backend automated tests were also run locally:
 
 `python -m pytest -q`
 
-**Result:** 10 passed.
+**Result:** 17 passed (current Phase 2.3 backend test suite).
 
 **Audit limitation:** Audit records are stored in process memory and are not persistent across backend container restarts.
 

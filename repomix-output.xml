@@ -123,484 +123,6 @@ README.md
 <files>
 This section contains the contents of the repository's files.
 
-<file path="backend/app/services/gemini_explainer.py">
-import json
-
-from google import genai
-from google.genai import types
-
-from app.models.workflow import WorkflowContext
-from app.services.llm_config import LLMConfig
-
-
-class GeminiExplainer:
-
-    MAX_SUMMARY_LENGTH = 500
-
-    @staticmethod
-    def enhance(context: WorkflowContext) -> dict:
-        explanation = context.explanation or {}
-        recommendation = context.final_recommendation or {}
-
-        fallback_summary = explanation.get("summary", "")
-
-        fallback_result = {
-            "summary": fallback_summary,
-            "status": "fallback",
-            "provider": "gemini",
-            "model": LLMConfig.MODEL,
-            "reason": "provider_unavailable",
-        }
-
-        if not LLMConfig.is_configured():
-            fallback_result["reason"] = "not_configured"
-            return fallback_result
-
-        action = recommendation.get("action", "NOT_AVAILABLE")
-        score = recommendation.get("priority_score", 0)
-
-        # Do not send the lead identifier to the external LLM.
-        evidence = {
-            "recommendation": action,
-            "priority_score": score,
-            "score_breakdown": explanation.get(
-                "score_breakdown", {}
-            ),
-            "triggered_rules": explanation.get(
-                "triggered_rules", []
-            ),
-            "reasons": explanation.get("reasons", []),
-            "executed_agents": explanation.get(
-                "executed_agents", []
-            ),
-        }
-
-        prompt = f"""
-You are an explanation assistant for a deterministic sales
-lead prioritization system.
-
-Rewrite the existing decision explanation into a clear,
-professional summary of one or two sentences.
-
-Use ONLY the supplied structured evidence.
-
-Mandatory requirements:
-- Preserve the exact recommendation action.
-- Preserve the exact priority score out of 100.
-- Do not invent facts or add unsupported reasons.
-- Do not change, reinterpret, or question the decision.
-- Do not make predictions or promises.
-- Do not make claims about health, legal compliance,
-  or customer behavior beyond the supplied evidence.
-- Do not recommend contacting a customer autonomously.
-- Return only the rewritten summary, without headings.
-
-Structured evidence:
-{json.dumps(evidence, ensure_ascii=False)}
-"""
-
-        try:
-            client = genai.Client(
-                api_key=LLMConfig.API_KEY,
-                http_options=types.HttpOptions(
-                    timeout=int(LLMConfig.TIMEOUT * 1000)
-                ),
-            )
-
-            response = client.models.generate_content(
-                model=LLMConfig.MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=0.2,
-                    max_output_tokens=120,
-                ),
-            )
-
-            summary = (response.text or "").strip()
-
-            if not GeminiExplainer._is_valid_summary(
-                summary,
-                action,
-                score,
-            ):
-                fallback_result["reason"] = "invalid_response"
-                return fallback_result
-
-            return {
-                "summary": summary,
-                "status": "completed",
-                "provider": "gemini",
-                "model": LLMConfig.MODEL,
-                "reason": "none",
-            }
-
-        except Exception as exc:
-            fallback_result["reason"] = (
-                "timeout"
-                if "timeout" in type(exc).__name__.lower()
-                else "provider_error"
-            )
-            return fallback_result
-
-    @staticmethod
-    def _is_valid_summary(
-        summary: str,
-        action: str,
-        score,
-    ) -> bool:
-        if not summary:
-            return False
-
-        if len(summary) > GeminiExplainer.MAX_SUMMARY_LENGTH:
-            return False
-
-        if "\n" in summary or "\r" in summary:
-            return False
-
-        required_values = [
-            action,
-            str(score),
-        ]
-
-        normalized_summary = summary.casefold()
-
-        return all(
-            value.casefold() in normalized_summary
-            for value in required_values
-        )
-</file>
-
-<file path="backend/app/services/llm_config.py">
-import os
-from pathlib import Path
-
-from dotenv import load_dotenv
-
-
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-ENV_FILE = BACKEND_DIR / ".env"
-
-load_dotenv(ENV_FILE)
-
-
-class LLMConfig:
-    PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
-
-    MODEL = os.getenv(
-        "GEMINI_MODEL",
-        "gemini-3.5-flash-lite",
-    ).strip()
-
-    API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-
-    TIMEOUT = float(os.getenv("LLM_TIMEOUT", "15"))
-
-    @classmethod
-    def is_configured(cls) -> bool:
-        return (
-            cls.PROVIDER == "gemini"
-            and bool(cls.API_KEY)
-            and bool(cls.MODEL)
-        )
-</file>
-
-<file path="backend/tests/test_gemini_explainer.py">
-from datetime import datetime, timezone
-
-import pytest
-
-from app.models.lead import LeadRecord
-from app.services.context_builder import ContextBuilder
-from app.services.explanation_service import ExplanationService
-from app.services.gemini_explainer import GeminiExplainer
-
-
-@pytest.fixture
-def workflow_context():
-    lead = LeadRecord(
-        lead_id="LEAD-GEMINI-001",
-        source="Website",
-        created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
-        last_contact_at=datetime(2026, 11, 12, tzinfo=timezone.utc),
-        declared_need="Enterprise software",
-        stage="Qualified",
-        contact_available=True,
-        pending_follow_up=True,
-    )
-
-    context = ContextBuilder.build(lead)
-
-    context.final_recommendation = {
-        "action": "FOLLOW_UP_NOW",
-        "priority_score": 95,
-        "triggered_rules": ["OVERDUE_FOLLOW_UP"],
-        "reasons": ["Follow-up is overdue"],
-    }
-
-    ExplanationService.build(context)
-
-    return context
-from types import SimpleNamespace
-
-
-def test_gemini_success_returns_valid_summary(
-    workflow_context,
-    monkeypatch,
-):
-    expected_summary = (
-        "LEAD-GEMINI-001 receives FOLLOW_UP_NOW "
-        "with a priority score of 95/100."
-    )
-
-    class MockModels:
-        @staticmethod
-        def generate_content(**kwargs):
-            return SimpleNamespace(text=expected_summary)
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.models = MockModels()
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        MockClient,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: True),
-    )
-
-    result = GeminiExplainer.enhance(workflow_context)
-
-    assert result["status"] == "completed"
-    assert result["provider"] == "gemini"
-    assert result["summary"] == expected_summary
-    assert result["reason"] == "none"
-def test_gemini_provider_error_uses_deterministic_fallback(
-    workflow_context,
-    monkeypatch,
-):
-    class MockModels:
-        @staticmethod
-        def generate_content(**kwargs):
-            raise RuntimeError("Simulated provider failure")
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.models = MockModels()
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        MockClient,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: True),
-    )
-
-    original_summary = workflow_context.explanation["summary"]
-
-    result = GeminiExplainer.enhance(workflow_context)
-
-    assert result["status"] == "fallback"
-    assert result["reason"] == "provider_error"
-    assert result["summary"] == original_summary
-    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
-    assert workflow_context.final_recommendation["priority_score"] == 95
-def test_gemini_timeout_uses_deterministic_fallback(
-    workflow_context,
-    monkeypatch,
-):
-    class MockModels:
-        @staticmethod
-        def generate_content(**kwargs):
-            raise TimeoutError("Simulated Gemini timeout")
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.models = MockModels()
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        MockClient,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: True),
-    )
-
-    original_summary = workflow_context.explanation["summary"]
-
-    result = GeminiExplainer.enhance(workflow_context)
-
-    assert result["status"] == "fallback"
-    assert result["reason"] == "timeout"
-    assert result["summary"] == original_summary
-    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
-    assert workflow_context.final_recommendation["priority_score"] == 95
-def test_gemini_invalid_response_uses_deterministic_fallback(
-    workflow_context,
-    monkeypatch,
-):
-    class MockModels:
-        @staticmethod
-        def generate_content(**kwargs):
-            return SimpleNamespace(
-                text="This lead may be worth reviewing."
-            )
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.models = MockModels()
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        MockClient,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: True),
-    )
-
-    original_summary = workflow_context.explanation["summary"]
-
-    result = GeminiExplainer.enhance(workflow_context)
-
-    assert result["status"] == "fallback"
-    assert result["reason"] == "invalid_response"
-    assert result["summary"] == original_summary
-    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
-    assert workflow_context.final_recommendation["priority_score"] == 95
-def test_gemini_missing_configuration_uses_fallback(
-    workflow_context,
-    monkeypatch,
-):
-    def unexpected_client_call(**kwargs):
-        raise AssertionError(
-            "Gemini client should not be created when unconfigured"
-        )
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        unexpected_client_call,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: False),
-    )
-
-    original_summary = workflow_context.explanation["summary"]
-
-    result = GeminiExplainer.enhance(workflow_context)
-
-    assert result["status"] == "fallback"
-    assert result["reason"] == "not_configured"
-    assert result["summary"] == original_summary
-def test_gemini_prompt_excludes_lead_identifier(
-    workflow_context,
-    monkeypatch,
-):
-    captured_prompt = {}
-
-    expected_summary = (
-        "FOLLOW_UP_NOW with a priority score of 95/100."
-    )
-
-    class MockModels:
-        @staticmethod
-        def generate_content(**kwargs):
-            captured_prompt["contents"] = kwargs["contents"]
-            return SimpleNamespace(text=expected_summary)
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.models = MockModels()
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        MockClient,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: True),
-    )
-
-    result = GeminiExplainer.enhance(workflow_context)
-
-    assert result["status"] == "completed"
-    assert "FOLLOW_UP_NOW" in captured_prompt["contents"]
-    assert "95" in captured_prompt["contents"]
-    assert "LEAD-GEMINI-001" not in captured_prompt["contents"]
-def test_gemini_preserves_request_data_recommendation(
-    monkeypatch,
-):
-    lead = LeadRecord(
-        lead_id="LEAD-MISSING-CONTACT",
-        source="Website",
-        created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
-        stage="New",
-        contact_available=False,
-    )
-
-    context = ContextBuilder.build(lead)
-
-    context.final_recommendation = {
-        "action": "REQUEST_DATA",
-        "priority_score": 0,
-        "triggered_rules": [],
-        "reasons": ["Mandatory contact information is missing"],
-    }
-
-    ExplanationService.build(context)
-
-    expected_summary = (
-        "REQUEST_DATA with a priority score of 0/100 "
-        "because mandatory contact information is missing."
-    )
-
-    class MockModels:
-        @staticmethod
-        def generate_content(**kwargs):
-            return SimpleNamespace(text=expected_summary)
-
-    class MockClient:
-        def __init__(self, **kwargs):
-            self.models = MockModels()
-
-    monkeypatch.setattr(
-        "app.services.gemini_explainer.genai.Client",
-        MockClient,
-    )
-
-    monkeypatch.setattr(
-        "app.services.llm_config.LLMConfig.is_configured",
-        classmethod(lambda cls: True),
-    )
-
-    result = GeminiExplainer.enhance(context)
-
-    assert result["status"] == "completed"
-    assert result["summary"] == expected_summary
-    assert context.final_recommendation["action"] == "REQUEST_DATA"
-    assert context.final_recommendation["priority_score"] == 0
-</file>
-
-<file path="backend/.env.example">
-# Google Gemini configuration
-GEMINI_API_KEY=your_gemini_api_key_here
-GEMINI_MODEL=gemini-3.5-flash-lite
-
-# LLM service configuration
-LLM_PROVIDER=gemini
-LLM_TIMEOUT=15
-</file>
-
 <file path="backend/app/agents/__init__.py">
 
 </file>
@@ -1160,6 +682,187 @@ class ExplanationService:
         return explanation
 </file>
 
+<file path="backend/app/services/gemini_explainer.py">
+import json
+
+from google import genai
+from google.genai import types
+
+from app.models.workflow import WorkflowContext
+from app.services.llm_config import LLMConfig
+
+
+class GeminiExplainer:
+
+    MAX_SUMMARY_LENGTH = 500
+
+    @staticmethod
+    def enhance(context: WorkflowContext) -> dict:
+        explanation = context.explanation or {}
+        recommendation = context.final_recommendation or {}
+
+        fallback_summary = explanation.get("summary", "")
+
+        fallback_result = {
+            "summary": fallback_summary,
+            "status": "fallback",
+            "provider": "gemini",
+            "model": LLMConfig.MODEL,
+            "reason": "provider_unavailable",
+        }
+
+        if not LLMConfig.is_configured():
+            fallback_result["reason"] = "not_configured"
+            return fallback_result
+
+        action = recommendation.get("action", "NOT_AVAILABLE")
+        score = recommendation.get("priority_score", 0)
+
+        # Do not send the lead identifier to the external LLM.
+        evidence = {
+            "recommendation": action,
+            "priority_score": score,
+            "score_breakdown": explanation.get(
+                "score_breakdown", {}
+            ),
+            "triggered_rules": explanation.get(
+                "triggered_rules", []
+            ),
+            "reasons": explanation.get("reasons", []),
+            "executed_agents": explanation.get(
+                "executed_agents", []
+            ),
+        }
+
+        prompt = f"""
+You are an explanation assistant for a deterministic sales
+lead prioritization system.
+
+Rewrite the existing decision explanation into a clear,
+professional summary of one or two sentences.
+
+Use ONLY the supplied structured evidence.
+
+Mandatory requirements:
+- Preserve the exact recommendation action.
+- Preserve the exact priority score out of 100.
+- Do not invent facts or add unsupported reasons.
+- Do not change, reinterpret, or question the decision.
+- Do not make predictions or promises.
+- Do not make claims about health, legal compliance,
+  or customer behavior beyond the supplied evidence.
+- Do not recommend contacting a customer autonomously.
+- Return only the rewritten summary, without headings.
+
+Structured evidence:
+{json.dumps(evidence, ensure_ascii=False)}
+"""
+
+        try:
+            client = genai.Client(
+                api_key=LLMConfig.API_KEY,
+                http_options=types.HttpOptions(
+                    timeout=int(LLMConfig.TIMEOUT * 1000)
+                ),
+            )
+
+            response = client.models.generate_content(
+                model=LLMConfig.MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=120,
+                ),
+            )
+
+            summary = (response.text or "").strip()
+
+            if not GeminiExplainer._is_valid_summary(
+                summary,
+                action,
+                score,
+            ):
+                fallback_result["reason"] = "invalid_response"
+                return fallback_result
+
+            return {
+                "summary": summary,
+                "status": "completed",
+                "provider": "gemini",
+                "model": LLMConfig.MODEL,
+                "reason": "none",
+            }
+
+        except Exception as exc:
+            fallback_result["reason"] = (
+                "timeout"
+                if "timeout" in type(exc).__name__.lower()
+                else "provider_error"
+            )
+            return fallback_result
+
+    @staticmethod
+    def _is_valid_summary(
+        summary: str,
+        action: str,
+        score,
+    ) -> bool:
+        if not summary:
+            return False
+
+        if len(summary) > GeminiExplainer.MAX_SUMMARY_LENGTH:
+            return False
+
+        if "\n" in summary or "\r" in summary:
+            return False
+
+        required_values = [
+            action,
+            str(score),
+        ]
+
+        normalized_summary = summary.casefold()
+
+        return all(
+            value.casefold() in normalized_summary
+            for value in required_values
+        )
+</file>
+
+<file path="backend/app/services/llm_config.py">
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[2]
+ENV_FILE = BACKEND_DIR / ".env"
+
+load_dotenv(ENV_FILE)
+
+
+class LLMConfig:
+    PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+
+    MODEL = os.getenv(
+        "GEMINI_MODEL",
+        "gemini-3.5-flash-lite",
+    ).strip()
+
+    API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
+    TIMEOUT = float(os.getenv("LLM_TIMEOUT", "15"))
+
+    @classmethod
+    def is_configured(cls) -> bool:
+        return (
+            cls.PROVIDER == "gemini"
+            and bool(cls.API_KEY)
+            and bool(cls.MODEL)
+        )
+</file>
+
 <file path="backend/app/services/workflow_state.py">
 from typing import List, TypedDict
 
@@ -1214,6 +917,293 @@ app.include_router(leads_router)
 
 </file>
 
+<file path="backend/tests/test_gemini_explainer.py">
+from datetime import datetime, timezone
+
+import pytest
+
+from app.models.lead import LeadRecord
+from app.services.context_builder import ContextBuilder
+from app.services.explanation_service import ExplanationService
+from app.services.gemini_explainer import GeminiExplainer
+
+
+@pytest.fixture
+def workflow_context():
+    lead = LeadRecord(
+        lead_id="LEAD-GEMINI-001",
+        source="Website",
+        created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+        last_contact_at=datetime(2026, 11, 12, tzinfo=timezone.utc),
+        declared_need="Enterprise software",
+        stage="Qualified",
+        contact_available=True,
+        pending_follow_up=True,
+    )
+
+    context = ContextBuilder.build(lead)
+
+    context.final_recommendation = {
+        "action": "FOLLOW_UP_NOW",
+        "priority_score": 95,
+        "triggered_rules": ["OVERDUE_FOLLOW_UP"],
+        "reasons": ["Follow-up is overdue"],
+    }
+
+    ExplanationService.build(context)
+
+    return context
+from types import SimpleNamespace
+
+
+def test_gemini_success_returns_valid_summary(
+    workflow_context,
+    monkeypatch,
+):
+    expected_summary = (
+        "LEAD-GEMINI-001 receives FOLLOW_UP_NOW "
+        "with a priority score of 95/100."
+    )
+
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return SimpleNamespace(text=expected_summary)
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "completed"
+    assert result["provider"] == "gemini"
+    assert result["summary"] == expected_summary
+    assert result["reason"] == "none"
+def test_gemini_provider_error_uses_deterministic_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            raise RuntimeError("Simulated provider failure")
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "provider_error"
+    assert result["summary"] == original_summary
+    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert workflow_context.final_recommendation["priority_score"] == 95
+def test_gemini_timeout_uses_deterministic_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            raise TimeoutError("Simulated Gemini timeout")
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "timeout"
+    assert result["summary"] == original_summary
+    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert workflow_context.final_recommendation["priority_score"] == 95
+def test_gemini_invalid_response_uses_deterministic_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return SimpleNamespace(
+                text="This lead may be worth reviewing."
+            )
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "invalid_response"
+    assert result["summary"] == original_summary
+    assert workflow_context.final_recommendation["action"] == "FOLLOW_UP_NOW"
+    assert workflow_context.final_recommendation["priority_score"] == 95
+def test_gemini_missing_configuration_uses_fallback(
+    workflow_context,
+    monkeypatch,
+):
+    def unexpected_client_call(**kwargs):
+        raise AssertionError(
+            "Gemini client should not be created when unconfigured"
+        )
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        unexpected_client_call,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: False),
+    )
+
+    original_summary = workflow_context.explanation["summary"]
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "fallback"
+    assert result["reason"] == "not_configured"
+    assert result["summary"] == original_summary
+def test_gemini_prompt_excludes_lead_identifier(
+    workflow_context,
+    monkeypatch,
+):
+    captured_prompt = {}
+
+    expected_summary = (
+        "FOLLOW_UP_NOW with a priority score of 95/100."
+    )
+
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            captured_prompt["contents"] = kwargs["contents"]
+            return SimpleNamespace(text=expected_summary)
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    result = GeminiExplainer.enhance(workflow_context)
+
+    assert result["status"] == "completed"
+    assert "FOLLOW_UP_NOW" in captured_prompt["contents"]
+    assert "95" in captured_prompt["contents"]
+    assert "LEAD-GEMINI-001" not in captured_prompt["contents"]
+def test_gemini_preserves_request_data_recommendation(
+    monkeypatch,
+):
+    lead = LeadRecord(
+        lead_id="LEAD-MISSING-CONTACT",
+        source="Website",
+        created_at=datetime(2026, 11, 10, tzinfo=timezone.utc),
+        stage="New",
+        contact_available=False,
+    )
+
+    context = ContextBuilder.build(lead)
+
+    context.final_recommendation = {
+        "action": "REQUEST_DATA",
+        "priority_score": 0,
+        "triggered_rules": [],
+        "reasons": ["Mandatory contact information is missing"],
+    }
+
+    ExplanationService.build(context)
+
+    expected_summary = (
+        "REQUEST_DATA with a priority score of 0/100 "
+        "because mandatory contact information is missing."
+    )
+
+    class MockModels:
+        @staticmethod
+        def generate_content(**kwargs):
+            return SimpleNamespace(text=expected_summary)
+
+    class MockClient:
+        def __init__(self, **kwargs):
+            self.models = MockModels()
+
+    monkeypatch.setattr(
+        "app.services.gemini_explainer.genai.Client",
+        MockClient,
+    )
+
+    monkeypatch.setattr(
+        "app.services.llm_config.LLMConfig.is_configured",
+        classmethod(lambda cls: True),
+    )
+
+    result = GeminiExplainer.enhance(context)
+
+    assert result["status"] == "completed"
+    assert result["summary"] == expected_summary
+    assert context.final_recommendation["action"] == "REQUEST_DATA"
+    assert context.final_recommendation["priority_score"] == 0
+</file>
+
 <file path="backend/.dockerignore">
 .venv/
 venv/
@@ -1230,6 +1220,16 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+</file>
+
+<file path="backend/.env.example">
+# Google Gemini configuration
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.5-flash-lite
+
+# LLM service configuration
+LLM_PROVIDER=gemini
+LLM_TIMEOUT=15
 </file>
 
 <file path="backend/.gitignore">
@@ -2007,17 +2007,6 @@ class WorkflowService:
         })
 
         return result["context"]
-</file>
-
-<file path="backend/requirements.txt">
-fastapi
-uvicorn[standard]
-pydantic
-pytest
-httpx
-langgraph==1.2.20
-google-genai
-python-dotenv
 </file>
 
 <file path="frontend/src/App.css">
@@ -2880,6 +2869,67 @@ EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 </file>
 
+<file path="backend/Dockerfile">
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+COPY backend/requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY backend/app ./app
+
+EXPOSE 8002
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+</file>
+
+<file path="backend/requirements.txt">
+fastapi
+uvicorn[standard]
+pydantic
+pytest
+httpx
+langgraph==1.2.20
+google-genai
+python-dotenv
+</file>
+
+<file path="frontend/nginx.conf">
+server {
+    listen 80;
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    location /api/ {
+        proxy_pass ${BACKEND_URL};
+        proxy_ssl_server_name on;
+        proxy_http_version 1.1;
+        proxy_set_header Host $proxy_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /health {
+        access_log off;
+        default_type text/plain;
+        return 200 "healthy\n";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+</file>
+
 <file path="docker-compose.yml">
 services:
   backend:
@@ -3260,56 +3310,6 @@ def build_workflow_graph():
     graph.add_edge("explanation_audit", END)
 
     return graph.compile()
-</file>
-
-<file path="backend/Dockerfile">
-FROM python:3.11-slim
-
-WORKDIR /app
-
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-COPY backend/requirements.txt .
-
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
-
-COPY backend/app ./app
-
-EXPOSE 8002
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
-</file>
-
-<file path="frontend/nginx.conf">
-server {
-    listen 80;
-    server_name _;
-
-    root /usr/share/nginx/html;
-    index index.html;
-
-    location /api/ {
-        proxy_pass ${BACKEND_URL};
-        proxy_ssl_server_name on;
-        proxy_http_version 1.1;
-        proxy_set_header Host $proxy_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /health {
-        access_log off;
-        default_type text/plain;
-        return 200 "healthy\n";
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
 </file>
 
 <file path="backend/tests/test_workflow.py">
@@ -5207,7 +5207,7 @@ The public backend health endpoint returned:
 - Render free services may spin down after inactivity, resulting in a delay during the first request.
 - Audit records, including their complete execution traces, remain in process-local memory. They are not durable and may be lost when the backend restarts.
 - No persistent database or external audit storage has been configured.
-- No application secrets are required for the current deployment.
+- The Gemini API key is configured securely as a backend environment secret in Render. It is not committed to GitHub. The local `backend/.env` file is excluded from Git, and `backend/.env.example` contains placeholder values only.
 
 ## 10. API Endpoints
 
@@ -5243,7 +5243,7 @@ npm run lint
 
 Current validation results:
 
-- Backend: 9 tests passed.
+- Backend: 17 tests passed (Phase 2.3).
 - Frontend production build: passed.
 - Frontend ESLint: passed.
 - Hot, warm, and stale scenarios: manually tested successfully through the frontend.
@@ -5282,7 +5282,7 @@ Backend automated tests were also run locally:
 
 `python -m pytest -q`
 
-**Result:** 10 passed.
+**Result:** 17 passed (current Phase 2.3 backend test suite).
 
 **Audit limitation:** Audit records are stored in process memory and are not persistent across backend container restarts.
 
