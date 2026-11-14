@@ -1,274 +1,154 @@
 # APEX — Lead Follow-up Prioritization Intelligence
 
 **Case ID:** AA007  
-**Assignment:** Lead Follow-up Prioritization Intelligence  
-**Domain:** Sales Operations  
 **Product:** APEX — Lead Intelligence Platform  
-**Product Version:** 1.0.0  
-**Current Phase:** Phase 3.1 — Business Experience Separation & Productization
+**Domain:** Sales Operations
+**Version:** 1.0.0
+**Phase:** 3 — Final Demo & Portfolio Package
 
 ## 1. Overview
 
-APEX is a deterministic, multi-agent application that helps sales teams prioritize lead follow-up activities using structured business evidence.
+APEX is a deterministic, multi-agent lead prioritization application designed to help sales teams decide which leads require attention first.
 
-The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
+It evaluates lead information, contact recency, engagement activity, declared business needs, and pending follow-up actions. It produces an explainable recommendation supported by scores, rules, and evidence.
 
-Five specialized agents are orchestrated through a LangGraph `StateGraph` with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
+The application combines deterministic decision-making with LangGraph conditional workflow orchestration and an optional Gemini-powered explanation layer.
 
-An optional, controlled Google Gemini service enhances the readability of the deterministic explanation. Gemini receives structured decision evidence, not the lead identifier, and cannot change the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the application retains the original deterministic explanation.
-
-Phase 3.1 improves the frontend product experience by separating the normal business-facing recommendation screen from the detailed technical execution and audit information. Business users can focus on the lead, recommendation, evidence, and suggested next action, while reviewers can expand the Explainability & Audit section to inspect the underlying workflow.
-
-The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
+**The deterministic workflow remains the authority for every lead recommendation. Gemini can improve the wording of an explanation, but it cannot change the recommendation or its score.**
 
 ## 2. Business Problem
 
-Sales teams need a consistent way to identify which leads require immediate attention, which can be followed up soon, and which should remain in a nurture process.
+Sales teams may receive leads from multiple sources, with different levels of engagement, contact history, and follow-up urgency.
 
-Manual prioritization can be inconsistent and difficult to audit.
+Without a consistent prioritization process:
+- Important follow-ups may be delayed.
+- Sales representatives may prioritize leads inconsistently.
+- Decisions may be difficult to explain or audit.
+- Incomplete lead information may result in unreliable decisions.
 
-APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules. The frontend presents the resulting recommendation with supporting context and a suggested next action, while retaining access to the full technical execution record for review.
+APEX addresses this problem through structured lead evaluation and evidence-based prioritization.
 
-## 3. Recommendations
+## 3. Primary Users
 
-The system supports four recommendation types:
+- **Sales coordinators:** Identify leads requiring follow-up.
+- **Inside sales representatives:** Understand which leads to contact first and why.
+- **Sales operations leads:** Review prioritization decisions and workflow evidence.
+
+## 4. What the Product Does
+
+The application accepts structured lead information, evaluates it through multiple agents, and returns one of four recommendations:
 
 | Recommendation | Meaning |
 |---|---|
-| `FOLLOW_UP_NOW` | Immediate follow-up is recommended. |
-| `FOLLOW_UP_SOON` | Follow-up should be scheduled soon. |
-| `NURTURE` | Continue the lead nurturing process. |
-| `REQUEST_DATA` | Mandatory lead information is missing or invalid. |
+| `FOLLOW_UP_NOW` | Immediate follow-up is required. |
+| `FOLLOW_UP_SOON` | Follow-up should happen soon. |
+| `NURTURE` | Keep the lead in a longer-term engagement process. |
+| `REQUEST_DATA` | Mandatory information is missing and must be supplied. |
 
-Each completed workflow provides a priority score, score breakdown, triggered business rules, explanation, and audit reference.
+Each result includes a priority score, recommendation, reasons, evidence, and workflow/audit information.
 
-### Phase 3.1 — Business Experience Separation & Productization
+## 5. Architecture
 
-Phase 3.1 improves how the application communicates deterministic recommendations to business users and how it exposes technical execution details to reviewers.
+APEX uses a multi-agent workflow orchestrated through LangGraph.
 
-The normal business-facing screen presents:
+### Agent responsibilities
 
-- Lead information and engagement context.
-- Recommendation outcome and priority score.
-- Recommendation explanation and business-readable reasons.
-- Supporting evidence and triggered business rules.
-- Suggested next action.
+1. **Lead Intake Agent** — Validates and normalizes lead information.
+2. **Recency Agent** — Evaluates lead age and last-contact recency.
+3. **Engagement Agent** — Evaluates recognized engagement events.
+4. **Fit & SLA Agent** — Evaluates declared business need and pending follow-up obligations.
+5. **Lead Priority Decision Agent** — Combines the deterministic scoring results and applies decision rules to produce the recommendation.
 
-The normal screen does not expose the internal agent execution timeline, raw structured agent outputs, workflow trace, or detailed audit JSON.
+### Workflow orchestration
 
-### Explainability & Audit
+LangGraph coordinates the agents and conditional decision routes.
 
-The frontend provides a dedicated **Explainability & Audit** section that is collapsed by default.
+The workflow includes:
+- Structured workflow state.
+- Sequential agent execution.
+- Conditional routing for different recommendation paths.
+- Explanation generation.
+- Optional Gemini explanation processing.
+- Explanation audit recording.
 
-When expanded, it exposes the technical journey associated with the workflow, including:
+The workflow ends after the explanation and audit stages.
 
-- Run-scoped shared workflow context.
-- Agent execution timeline and execution statuses.
-- Structured outputs from the agents.
-- LangGraph execution trace and conditional routing information.
-- Gemini provider, model, execution status, and fallback information when available.
-- Audit reference and complete audit record.
-- Relevant raw JSON for technical inspection.
+### Decision authority
 
-This separation keeps the normal experience focused on business decisions while preserving the technical transparency required for internship review, debugging, and workflow verification.
+The decision engine is deterministic. It uses approved lead evidence, weighted scoring, and explicit business rules.
 
-The suggested actions are operational guidance for the sales team. They do not trigger automatic customer communication or external actions.
+Important decision conditions include:
+- Overdue committed follow-up can trigger `FOLLOW_UP_NOW`.
+- High fit combined with recent engagement supports higher priority.
+- Low engagement and older leads can be routed to `NURTURE`.
+- Missing mandatory information triggers `REQUEST_DATA`.
 
-| Recommendation | Suggested operational response |
+The same valid input and rules produce the same deterministic decision.
+
+## 6. Key Features
+
+- Multi-agent lead evaluation.
+- Deterministic weighted scoring.
+- SLA-aware follow-up prioritization.
+- LangGraph conditional workflow routing.
+- Four recommendation outcomes.
+- Evidence-grounded explanations.
+- Optional Gemini explanation enhancement.
+- Deterministic fallback when Gemini is unavailable or returns an invalid response.
+- Workflow trace and audit information.
+- Business-facing recommendation view separated from technical explainability details.
+- Responsive frontend interface.
+
+## 7. Controlled Gemini Explanation Layer
+
+Gemini is an optional explanation enhancement, not a decision-making agent.
+
+The deterministic workflow first produces the recommendation and evidence. The Gemini layer receives approved decision evidence and attempts to rewrite the explanation concisely.
+
+The integration includes safeguards:
+- The recommendation and score must remain unchanged.
+- The explanation must be based on supplied evidence.
+- Lead identifiers are excluded from the Gemini evidence payload.
+- Unsupported predictions, promises, and claims are prohibited.
+- Invalid responses, provider errors, timeouts, or missing configuration trigger deterministic fallback.
+
+If Gemini is unavailable, the application retains the original deterministic explanation.
+
+## 8. Demo Scenarios
+
+The following scenarios demonstrate the application's decision paths.
+
+| Scenario | Input condition | Expected recommendation |
+|---|---|---|
+| A — Hot lead | Recent inquiry, strong fit, overdue follow-up | `FOLLOW_UP_NOW` |
+| B — Warm lead | Moderate engagement and valid declared need | `FOLLOW_UP_SOON` |
+| C — Stale lead | Older lead with no recognized engagement | `NURTURE` |
+| D — Incomplete lead | Missing mandatory contact information | `REQUEST_DATA` |
+
+Scenarios A, B, and C are provided through the seeded scenario API. Scenario D demonstrates the missing-data route using an incomplete lead record.
+
+The actual score and explanation are generated by the workflow at execution time.
+
+## 9. Technology Stack
+
+| Layer | Technology |
 |---|---|
-| `FOLLOW_UP_NOW` | Contact the lead as soon as practical and agree on the next step. |
-| `FOLLOW_UP_SOON` | Schedule a follow-up within the team's normal response window. |
-| `NURTURE` | Add the lead to the appropriate nurture queue and plan a future review. |
-| `REQUEST_DATA` | Obtain the missing mandatory information before reassessing the lead. |
+| Backend | Python, FastAPI |
+| Workflow orchestration | LangGraph |
+| LLM explanation | Google Gemini API, `google-genai` SDK |
+| Frontend | React, TypeScript, Vite |
+| Web server / reverse proxy | Nginx |
+| Testing | Pytest |
+| Containerization | Docker, Docker Compose |
+| Cloud deployment | Render |
 
-## 4. Multi-Agent Architecture
+## 10. Running Locally
 
-The workflow consists of five specialized agents:
-
-1. **Lead Intake Agent** — validates and normalizes lead information.
-2. **Recency Agent** — evaluates lead age and last-contact recency.
-3. **Engagement Agent** — scores approved business engagement events.
-4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
-5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
-
-### LangGraph Orchestration
-
-The five specialized agents are orchestrated through a LangGraph `StateGraph` using deterministic conditional routing. The graph uses shared workflow state and selects different execution paths based on mandatory-data validation and the deterministic priority decision.
-
-The workflow includes these core processing nodes:
-
-1. `build_context` — initializes the shared workflow context.
-2. `lead_intake` — validates and normalizes mandatory lead information.
-3. `recency` — evaluates lead age and last-contact recency.
-4. `engagement` — scores approved business engagement events.
-5. `fit_sla` — evaluates declared business need and pending follow-up commitments.
-6. `priority_decision` — calculates the deterministic recommendation.
-7. `explanation_audit` — generates the explanation and audit information for every outcome path.
-
-**Conditional routing after Lead Intake:**
-
-- Valid mandatory data → continue to `recency` and the analytical agents.
-- Missing mandatory data → `request_data` route, producing `REQUEST_DATA`.
-- Intake execution failure → `workflow_error` route.
-
-**Conditional routing after Priority Decision:**
-
-- `OVERDUE_FOLLOW_UP` → `overdue_follow_up` route.
-- `HIGH_PRIORITY_SCORE` → `high_priority` route.
-- `MODERATE_PRIORITY_SCORE` → `follow_up_soon` route.
-- `LOW_PRIORITY_SCORE` → `nurture` route.
-- Agent execution failure or an unidentified priority route → `workflow_error` route.
-
-Each router records its selected route and triggering condition in the execution trace. The selected outcome node then leads to the shared `explanation_audit` node, ensuring that explanations and audit information are generated across the different paths.
-
-The audit record preserves a copy of the complete execution trace, including node execution statuses, selected routes, routing conditions, and the final `explanation_audit` completion entry.
-
-LangGraph manages conditional orchestration and shared state. All validation, scoring, recommendation selection, and business rules remain deterministic; routing does not delegate business decisions to an LLM.
-
-### Controlled LLM Enhancement — Post 2.3
-
-The workflow includes an optional Google Gemini enhancement after the deterministic explanation is generated and before the final audit is recorded.
-
-**Processing sequence:**
-
-1. The deterministic agents validate lead information and calculate the recommendation.
-2. LangGraph selects the appropriate conditional execution path.
-3. The deterministic priority decision establishes the recommendation and score.
-4. `build_explanation` generates the original evidence-based explanation.
-5. `gemini_explanation` optionally rewrites the explanation into a concise, readable summary.
-6. The response is validated before it is accepted.
-7. `explanation_audit` records the complete execution trace.
-
-**LLM boundaries and safeguards:**
-
-- Gemini only improves the readability of an existing explanation.
-- The deterministic recommendation and priority score remain authoritative.
-- Only structured decision evidence is sent to Gemini; the lead identifier is excluded.
-- The response must preserve the exact recommendation action and priority score.
-- Responses exceeding the configured length limit or containing multiple lines are rejected.
-- Provider errors, timeouts, missing configuration, and invalid responses trigger deterministic fallback.
-- No autonomous customer contact or LLM-based business decisions are performed.
-
-**Configuration:**
-
-The optional service is configured through environment variables:
-
-| Variable | Purpose |
-|---|---|
-| `LLM_PROVIDER` | LLM provider (`gemini`). |
-| `GEMINI_API_KEY` | Google Gemini API key. |
-| `GEMINI_MODEL` | Configured Gemini model. |
-| `LLM_TIMEOUT` | Provider request timeout in seconds. |
-
-The API key is stored locally in `backend/.env` and must never be committed. `backend/.env.example` contains placeholder configuration.
-
-**Execution trace and audit:**
-
-The `gemini_explanation` trace entry records the provider, model, execution status, and reason. The audit record preserves this entry along with the rest of the workflow trace.
-
-If Gemini is unavailable or returns an invalid response, the original deterministic explanation is retained.
-
-The LLM does not control validation, scoring, routing, recommendation selection, or business rules.
-
-## 5. Deterministic Decision Logic
-
-The current MVP uses provisional scoring assumptions:
-
-- Recency: up to 30 points.
-- Engagement: up to 40 points.
-- Declared business need: up to 30 points.
-- Total priority score: 100 points.
-
-Current decision precedence:
-
-1. Missing or invalid mandatory information → `REQUEST_DATA`.
-2. Overdue committed follow-up → `FOLLOW_UP_NOW`.
-3. Score of 70 or above → `FOLLOW_UP_NOW`.
-4. Score of 40 or above → `FOLLOW_UP_SOON`.
-5. Otherwise → `NURTURE`.
-
-These weights, thresholds, and rules are provisional implementation assumptions for the MVP, not externally validated sales benchmarks.
-
-## 6. Sample Scenarios
-
-The application includes seeded sample scenarios for demonstrating the recommendation workflow.
-
-| Scenario | Expected recommendation | Expected score |
-|---|---|---:|
-| Hot | `FOLLOW_UP_NOW` | 95 |
-| Warm | `FOLLOW_UP_SOON` | 65 |
-| Stale | `NURTURE` | 0 |
-| Missing contact information | `REQUEST_DATA` | 0 |
-
-These are illustrative sample records, not live customer data.
-
-## 7. Technology Stack
-
-**Backend**
+### Prerequisites
 
 - Python 3.11
-- FastAPI
-- Pydantic
-- LangGraph (`StateGraph` conditional routing)
-- Pytest
-- Google Gemini integration (optional explanation enhancement)
-
-**Frontend**
-
-- React
-- TypeScript
-- Vite
-- CSS
-- Native HTML expandable details section for Explainability & Audit
-
-**Containerization and Deployment**
-
-- Docker
-- Docker Compose
-- Nginx (frontend static hosting and API reverse proxy)
-- Render (cloud deployment)
-
-## 8. Project Structure
-
-```text
-AA007-Lead-Follow-up-Prioritization-Intelligence/
-├── backend/
-│   ├── app/
-│   │   ├── agents/
-│   │   ├── api/
-│   │   ├── data/
-│   │   ├── models/
-│   │   ├── rules/
-│   │   └── services/
-│   │       ├── workflow_service.py
-│   │       ├── workflow_graph.py
-│   │       └── workflow_state.py
-│   ├── tests/
-│   ├── .dockerignore
-│   ├── Dockerfile
-│   └── requirements.txt
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   ├── .dockerignore
-│   ├── Dockerfile
-│   ├── nginx.conf
-│   ├── package.json
-│   └── vite.config.ts
-├── docs/
-│   └── architecture.md
-├── docker-compose.yml
-├── .gitignore
-└── README.md
-```
-
-The backend workflow modules are:
-
-- `workflow_service.py` — invokes the compiled LangGraph workflow.
-- `workflow_graph.py` — defines the conditional-routing StateGraph and its outcome paths.
-- `workflow_state.py` — defines the shared state passed between graph nodes.
-
-## 9. Run Locally
+- Node.js and npm
+- Docker and Docker Compose (for containerized execution)
 
 ### Backend
 
@@ -276,264 +156,135 @@ From the repository root:
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/Scripts/activate
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8002
 ```
 
-Backend health endpoint:
+Create and activate a virtual environment if one does not already exist.
 
-`http://127.0.0.1:8002/api/assistant/health`
+Install the backend dependencies:
 
-Interactive API documentation:
+```bash
+pip install -r requirements.txt
+```
 
-`http://127.0.0.1:8002/docs`
+Start the API:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8002
+```
 
 ### Frontend
 
-Open a second terminal:
+Open another terminal from the repository root:
 
 ```bash
 cd frontend
 npm install
-npm run dev -- --port 5174
+npm run dev
 ```
 
-Open the application:
+The Vite development server uses the frontend development configuration to proxy API requests to the local backend.
 
-`http://localhost:5174`
+### Docker Compose
 
-The Vite development server proxies `/api` requests to the backend on port 8002.
-
-### Dockerized Local Run (Phase 1.3)
-
-The application can also run locally as two Docker containers using Docker Compose.
-
-**Container architecture:**
-
-- **Backend:** Python 3.11, FastAPI and Uvicorn, listening on port `8002` inside the container.
-- **Frontend:** React production build served by Nginx.
-- **API communication:** Nginx forwards frontend `/api/` requests to the backend service at `http://backend:8002`.
-- **Frontend access:** `http://localhost:8080`.
-- **Health checks:** Docker Compose checks backend and frontend health. The frontend starts after the backend becomes healthy.
-
-Run these commands from the repository root:
+From the repository root:
 
 ```bash
-docker compose config
-docker compose build
-docker compose up -d
-docker compose ps
+docker compose up --build
 ```
 
-Open the containerized application:
+The containerized frontend is served on port `8080`. The backend is exposed on port `8002`.
 
-`http://localhost:8080`
+Use the application URL:
 
-To rebuild and restart after code changes:
-
-```bash
-docker compose up -d --build
+```text
+http://localhost:8080
 ```
 
-To stop the AA007 containers:
+## 11. Cloud Deployment
 
-```bash
-docker compose down
+The application is deployed using Render.
+
+**Frontend:**
+https://aa007-frontend.onrender.com
+
+**Backend:**
+https://aa007-backend.onrender.com
+
+The frontend uses Nginx to forward `/api/` requests to the backend through the `BACKEND_URL` environment variable.
+
+The deployed configuration was verified:
+- Backend scenario API responds successfully.
+- Frontend proxy forwards requests successfully.
+- The deployed dashboard loads and works.
+- All four application scenarios were verified.
+
+## 12. Testing and Validation
+
+Backend automated tests were executed using the project's Python 3.11.9 virtual environment.
+
+**Latest verified result:**
+
+```text
+17 passed in 1.53s
 ```
 
-### Render Cloud Deployment (Phase 1.4)
+Test coverage includes:
+- Seed scenario workflow execution.
+- Scenario listing and execution APIs.
+- Unknown scenario handling.
+- Missing mandatory contact information.
+- High-priority conditional routing.
+- Gemini successful explanation.
+- Gemini provider-error fallback.
+- Gemini timeout fallback.
+- Invalid-response fallback.
+- Missing-configuration fallback.
+- Exclusion of lead identifiers from the Gemini prompt.
+- Preservation of the `REQUEST_DATA` recommendation.
 
-The APEX application is deployed on Render using two separate Docker-based Web Services.
+The deployed frontend, backend API, and frontend-to-backend proxy were also manually verified.
 
-**Public application URLs:**
+## 13. Product Evolution
 
-- **Frontend:** https://aa007-frontend.onrender.com
-- **Backend:** https://aa007-backend.onrender.com
-- **Backend health:** https://aa007-backend.onrender.com/api/assistant/health
+The project evolved through three main implementation stages:
 
-**Deployment architecture:**
+1. **Deterministic foundation:** Structured lead inputs, agent responsibilities, weighted scoring, business rules, and explainable recommendations.
+2. **LangGraph orchestration:** Multi-agent workflow execution, shared workflow state, and conditional routing for different decision paths.
+3. **Controlled LLM enhancement:** Optional Gemini-generated explanation wording, validation safeguards, and deterministic fallback.
 
-- **Frontend service:** React production build served through Nginx.
-- **Backend service:** FastAPI application served by Uvicorn on port `8002`.
-- **Cloud platform:** Render Docker Web Services.
-- **Region:** Singapore.
-- **Instance type:** Free tier for both services.
-- **Source repository:** GitHub `main` branch.
+Across these stages, the deterministic decision engine remains the source of truth.
 
-**Frontend environment configuration:**
+## 14. Limitations and Non-Goals
 
-The frontend Render service uses the following environment variable:
+APEX is an internship MVP and demonstration application.
 
-| Variable | Value |
-|---|---|
-| `BACKEND_URL` | `https://aa007-backend.onrender.com` |
+It is not intended to:
+- Autonomously contact customers.
+- Negotiate pricing or contracts.
+- Make decisions using sensitive demographic characteristics.
+- Replace human sales judgment.
+- Guarantee AI explanation accuracy.
+- Claim production readiness or enterprise integration.
 
-Nginx uses this variable to forward browser requests under `/api/` to the backend service. This preserves the frontend's same-origin API request pattern without requiring a separate browser-to-backend CORS configuration.
+The application uses structured sample scenarios for demonstration. Real-world deployment would require appropriate data governance, security controls, operational monitoring, and integration validation.
 
-**Previously deployed Phase 3.1 validation:**
+## 15. Future Improvements
 
-The deployed application was checked after the earlier Phase 3.1 recommendation experience changes.
+Potential future improvements include:
+- Integration with approved CRM systems.
+- Persistent audit storage.
+- Expanded lead datasets and evaluation.
+- User authentication and role-based access.
+- Operational monitoring and workflow performance metrics.
+- Additional configurable sales prioritization rules.
 
-- Public frontend loaded successfully.
-- Updated recommendation interface was visible.
-- Backend health endpoint was available.
-- All four seeded scenarios were exercised through the deployed frontend.
-- The four recommendation outcomes were returned as expected.
+## 16. Repository
 
-The latest Explainability & Audit separation has been validated locally. Its production deployment should be verified after the corresponding changes are merged and deployed.
+GitHub:
+https://github.com/parvathycr28/AA007-Lead-Follow-up-Intelligence
 
-**Operational limitations:**
+---
 
-- Render free services may spin down after inactivity, resulting in a delay during the first request.
-- Audit records, including their complete execution traces, remain in process-local memory. They are not durable and may be lost when the backend restarts.
-- No persistent database or external audit storage has been configured.
-- The Gemini API key is configured securely as a backend environment secret in Render. It is not committed to GitHub.
-- The local `backend/.env` file is excluded from Git, and `backend/.env.example` contains placeholder values only.
+**AA007 — APEX Lead Intelligence Platform**
 
-## 10. API Endpoints
-
-| Method | Endpoint | Purpose |
-|---|---|---|
-| GET | `/api/assistant/health` | Backend health check |
-| GET | `/api/leads/scenarios` | List seeded scenarios |
-| POST | `/api/leads/prioritize` | Prioritize a supplied lead |
-| POST | `/api/leads/scenarios/{scenario_name}/run` | Execute a seeded scenario |
-
-## 11. Testing and Validation
-
-### Automated and Frontend Validation
-
-The following frontend validation was completed for the Phase 3.1 experience separation:
-
-- TypeScript validation using `npx tsc --noEmit` — passed.
-- Frontend production build using `npm run build` — passed.
-- Docker frontend image rebuild — completed successfully.
-- Local Docker application — frontend and backend running and healthy.
-- Business-facing screen separation — verified.
-- Explainability & Audit expansion — verified.
-- Four recommendation scenarios — verified.
-- Responsive layout checks — completed at 1440px, 768px, 390px, and 320px.
-
-The previously documented backend automated test result was 17 passed during Phase 2.3. This historical result should not be interpreted as a newly executed Phase 3.1 backend test run.
-
-### Phase 3.1 Scenario Validation
-
-All four scenarios were tested through the local application.
-
-| Scenario | Expected recommendation | Score | Result |
-|---|---|---:|---|
-| HOT | `FOLLOW_UP_NOW` | 95 | Passed |
-| WARM | `FOLLOW_UP_SOON` | 65 | Passed |
-| STALE | `NURTURE` | 0 | Passed |
-| Missing contact | `REQUEST_DATA` | 0 | Passed |
-
-The HOT, WARM, and STALE scenarios completed the normal analytical workflow.
-
-The missing-contact scenario correctly followed the mandatory-data validation path and returned `REQUEST_DATA`. It stopped after the Lead Intake Agent rather than executing the remaining analytical agents. This is the expected incomplete-input behavior.
-
-The application displayed the corresponding recommendation explanations and suggested next actions.
-
-### Business Experience and Explainability Validation
-
-The updated frontend was checked to confirm that the normal business-facing experience and technical inspection experience are separated.
-
-**Normal business-facing screen:**
-
-- Lead information and engagement context remain visible.
-- Recommendation, priority, explanation, evidence, and suggested next action remain accessible.
-- Internal agent execution details and raw JSON are not exposed in the normal screen.
-
-**Explainability & Audit:**
-
-- The section is collapsed by default.
-- Expanding it reveals run-scoped workflow context.
-- The agent execution timeline and structured outputs remain available.
-- LangGraph routing and execution trace remain available.
-- Gemini metadata and fallback information remain available when returned by the workflow.
-- Audit information and relevant raw JSON remain accessible.
-
-### Responsive Layout Validation
-
-The updated frontend was checked at the following viewport widths:
-
-| Viewport | Layout | Result |
-|---:|---|---|
-| 1440px | Desktop | Passed |
-| 768px | Tablet | Passed |
-| 390px | Mobile | Passed |
-| 320px | Narrow mobile | Passed |
-
-The business-facing content remained readable, and the Explainability & Audit section remained usable across the tested layouts.
-
-### Docker Validation (Phase 1.3)
-
-The application was built and validated using Docker Compose.
-
-**Container status:**
-
-- `aa007-backend` — running and healthy.
-- `aa007-frontend` — running and healthy.
-- Frontend published on host port `8080`.
-
-**Health and API checks:**
-
-| Check | Result |
-|---|---|
-| Frontend health (`/health`) | Passed |
-| Backend health (`/api/assistant/health`) through Nginx | Passed |
-| Scenario listing API | Passed |
-| Frontend-to-backend communication | Passed |
-
-Audit records are stored in process memory and are not persistent across backend container restarts.
-
-## 12. Scope and Limitations
-
-### Current Phase 3.1 Capabilities
-
-- Uses seeded sample data rather than a live CRM integration.
-- Uses five specialized deterministic agents for lead validation, analysis, and prioritization.
-- Uses LangGraph conditional routing based on mandatory-data validation and deterministic priority rules.
-- Preserves deterministic recommendation selection, scoring, and business rules.
-- Uses Google Gemini as an optional, controlled explanation-enhancement service.
-- Validates LLM output and falls back to the original deterministic explanation on provider errors, timeouts, missing configuration, or invalid responses.
-- Records workflow execution, routing decisions, and Gemini provider/model/status/reason in the execution trace and audit record.
-- Presents clearer recommendation explanations and suggested next actions for all four recommendation outcomes.
-- Separates the normal business-facing recommendation experience from technical workflow inspection.
-- Provides a collapsed-by-default Explainability & Audit section for technical review.
-- Retains shared workflow context, agent execution information, structured outputs, routing trace, LLM metadata, and audit details for inspection.
-- Supports local Docker-based execution and cloud deployment on Render.
-- Does not automatically send messages or contact leads.
-
-### Out of Scope
-
-- Dynamic agent selection beyond the defined deterministic workflow routes.
-- LLM-based business decisions.
-- Retrieval-Augmented Generation (RAG).
-- Vector databases.
-- Model Context Protocol (MCP).
-- Live CRM integration.
-- Automatic customer communication.
-
-### Operational Limitations
-
-- Audit records are held in process-local memory and are not durable across backend restarts or service replacement.
-- Scoring weights and thresholds are provisional MVP assumptions.
-- Recommendations support operational prioritization and are not guaranteed sales outcomes.
-- Sensitive personal profiling is excluded.
-- The application uses seeded sample scenarios and is not a production CRM integration.
-
-## 13. Project Objective
-
-The objective is to demonstrate a transparent, explainable, and testable multi-agent workflow for Lead Follow-up Prioritization Intelligence.
-
-The application combines five specialized deterministic agents, shared workflow context, LangGraph conditional routing, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
-
-The controlled Gemini enhancement introduced in Post 2.3 improves explanation readability while keeping deterministic business decisions authoritative.
-
-Phase 3.1 builds on this foundation by separating the business-facing recommendation experience from the detailed technical execution view. Business users can focus on the recommendation and next action, while reviewers retain access to the full workflow and audit information through Explainability & Audit.
-
-The Phase 3.1 frontend productization changes do not alter the deterministic scoring model, recommendation rules, LangGraph routing, Gemini safeguards, backend architecture, or API decision authority.
-
-The project demonstrates the design, implementation, testing, local Docker validation, and Render deployment of a deterministic multi-agent lead prioritization application.
+An explainable, deterministic-first, multi-agent approach to lead follow-up prioritization.
