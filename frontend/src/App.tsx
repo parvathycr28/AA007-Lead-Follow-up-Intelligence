@@ -326,7 +326,7 @@ function App() {
               Transparent, evidence-based lead prioritization through a coordinated agent workflow.
             </p>
           </div>
-          <div className="version-tag">AA007 · PHASE 2</div>
+          <div className="version-tag">AA007 · PHASE 3</div>
         </div>
 
         <section className="scenario-panel">

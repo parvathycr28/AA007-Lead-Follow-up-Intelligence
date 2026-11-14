@@ -1,11 +1,11 @@
-# APEX â€” Lead Follow-up Prioritization Intelligence
+# APEX — Lead Follow-up Prioritization Intelligence
 
-**Case ID:** AA007
-**Assignment:** Lead Follow-up Prioritization Intelligence
-**Domain:** Sales Operations
-**Product:** APEX â€” Lead Intelligence Platform
-**Version:** 1.0.0
-**Current Phase:** Post 2.3 â€” Controlled LLM Enhancement
+**Case ID:** AA007  
+**Assignment:** Lead Follow-up Prioritization Intelligence  
+**Domain:** Sales Operations  
+**Product:** APEX — Lead Intelligence Platform  
+**Product Version:** 1.0.0  
+**Current Phase:** Phase 3.1 — Business Recommendation Experience
 
 ## 1. Overview
 
@@ -13,9 +13,11 @@ APEX is a deterministic, multi-agent application that helps sales teams prioriti
 
 The system evaluates lead recency, engagement, declared business need, and pending follow-up commitments. It produces transparent recommendations, supporting reasons, evidence, and audit references.
 
-The existing five specialized agents are orchestrated through a LangGraph StateGraph with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
+Five specialized agents are orchestrated through a LangGraph `StateGraph` with deterministic conditional routing. The graph manages execution order and shared workflow state, while the agents retain responsibility for deterministic validation, scoring, and business decisions.
 
 An optional, controlled Google Gemini service enhances the readability of the deterministic explanation. Gemini receives structured decision evidence, not the lead identifier, and cannot change the recommendation, priority score, or business rules. If the provider is unavailable or its response fails validation, the application retains the original deterministic explanation.
+
+Phase 3.1 improves the frontend recommendation experience by providing clearer explanations and suggested next actions for all four recommendation outcomes.
 
 The application uses seeded sample lead records. It does not connect to a live CRM, contact customers, or make autonomous external business decisions.
 
@@ -25,7 +27,7 @@ Sales teams need a consistent way to identify which leads require immediate atte
 
 Manual prioritization can be inconsistent and difficult to audit.
 
-APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules.
+APEX addresses this problem through a structured workflow with five specialized agents and deterministic decision rules. The frontend presents the resulting recommendation with supporting context and a suggested next action.
 
 ## 3. Recommendations
 
@@ -40,43 +42,63 @@ The system supports four recommendation types:
 
 Each completed workflow provides a priority score, score breakdown, triggered business rules, explanation, and audit reference.
 
+### Phase 3.1 — Recommendation Experience
+
+Phase 3.1 improves how the application communicates its deterministic recommendations.
+
+The frontend provides:
+
+- A recommendation explanation that gives users additional context about the outcome.
+- A suggested next action that helps users understand the appropriate operational response.
+- Consistent presentation across all four recommendation types.
+- The existing priority score, evidence, agent outputs, and audit information.
+
+The suggested actions are guidance for the sales team. They do not trigger automatic customer communication or external actions.
+
+| Recommendation | Suggested operational response |
+|---|---|
+| `FOLLOW_UP_NOW` | Contact the lead as soon as practical and agree on the next step. |
+| `FOLLOW_UP_SOON` | Schedule a follow-up within the team's normal response window. |
+| `NURTURE` | Add the lead to the appropriate nurture queue and plan a future review. |
+| `REQUEST_DATA` | Obtain the missing mandatory information before reassessing the lead. |
+
 ## 4. Multi-Agent Architecture
 
 The workflow consists of five specialized agents:
 
-1. **Lead Intake Agent** â€” validates and normalizes lead information.
-2. **Recency Agent** â€” evaluates lead age and last-contact recency.
-3. **Engagement Agent** â€” scores approved business engagement events.
-4. **Fit & SLA Agent** â€” evaluates declared business need and pending follow-up commitments.
-5. **Lead Priority Decision Agent** â€” combines agent outputs and applies deterministic decision rules.
+1. **Lead Intake Agent** — validates and normalizes lead information.
+2. **Recency Agent** — evaluates lead age and last-contact recency.
+3. **Engagement Agent** — scores approved business engagement events.
+4. **Fit & SLA Agent** — evaluates declared business need and pending follow-up commitments.
+5. **Lead Priority Decision Agent** — combines agent outputs and applies deterministic decision rules.
 
-### LangGraph Orchestration â€” Phase 2.2
+### LangGraph Orchestration
 
 The five specialized agents are orchestrated through a LangGraph `StateGraph` using deterministic conditional routing. The graph uses shared workflow state and selects different execution paths based on mandatory-data validation and the deterministic priority decision.
 
 The workflow includes these core processing nodes:
 
-1. `build_context` â€” initializes the shared workflow context.
-2. `lead_intake` â€” validates and normalizes mandatory lead information.
-3. `recency` â€” evaluates lead age and last-contact recency.
-4. `engagement` â€” scores approved business engagement events.
-5. `fit_sla` â€” evaluates declared business need and pending follow-up commitments.
-6. `priority_decision` â€” calculates the deterministic recommendation.
-7. `explanation_audit` â€” generates the explanation and audit information for every outcome path.
+1. `build_context` — initializes the shared workflow context.
+2. `lead_intake` — validates and normalizes mandatory lead information.
+3. `recency` — evaluates lead age and last-contact recency.
+4. `engagement` — scores approved business engagement events.
+5. `fit_sla` — evaluates declared business need and pending follow-up commitments.
+6. `priority_decision` — calculates the deterministic recommendation.
+7. `explanation_audit` — generates the explanation and audit information for every outcome path.
 
 **Conditional routing after Lead Intake:**
 
-- Valid mandatory data â†’ continue to `recency` and the analytical agents.
-- Missing mandatory data â†’ `request_data` route, producing `REQUEST_DATA`.
-- Intake execution failure â†’ `workflow_error` route.
+- Valid mandatory data → continue to `recency` and the analytical agents.
+- Missing mandatory data → `request_data` route, producing `REQUEST_DATA`.
+- Intake execution failure → `workflow_error` route.
 
 **Conditional routing after Priority Decision:**
 
-- `OVERDUE_FOLLOW_UP` â†’ `overdue_follow_up` route.
-- `HIGH_PRIORITY_SCORE` â†’ `high_priority` route.
-- `MODERATE_PRIORITY_SCORE` â†’ `follow_up_soon` route.
-- `LOW_PRIORITY_SCORE` â†’ `nurture` route.
-- Agent execution failure or an unidentified priority route â†’ `workflow_error` route.
+- `OVERDUE_FOLLOW_UP` → `overdue_follow_up` route.
+- `HIGH_PRIORITY_SCORE` → `high_priority` route.
+- `MODERATE_PRIORITY_SCORE` → `follow_up_soon` route.
+- `LOW_PRIORITY_SCORE` → `nurture` route.
+- Agent execution failure or an unidentified priority route → `workflow_error` route.
 
 Each router records its selected route and triggering condition in the execution trace. The selected outcome node then leads to the shared `explanation_audit` node, ensuring that explanations and audit information are generated across the different paths.
 
@@ -84,7 +106,7 @@ The audit record preserves a copy of the complete execution trace, including nod
 
 LangGraph manages conditional orchestration and shared state. All validation, scoring, recommendation selection, and business rules remain deterministic; routing does not delegate business decisions to an LLM.
 
-### Controlled LLM Enhancement â€” Post 2.3
+### Controlled LLM Enhancement — Post 2.3
 
 The workflow includes an optional Google Gemini enhancement after the deterministic explanation is generated and before the final audit is recorded.
 
@@ -140,40 +162,47 @@ The current MVP uses provisional scoring assumptions:
 
 Current decision precedence:
 
-1. Missing or invalid mandatory information â†’ `REQUEST_DATA`.
-2. Overdue committed follow-up â†’ `FOLLOW_UP_NOW`.
-3. Score of 70 or above â†’ `FOLLOW_UP_NOW`.
-4. Score of 40 or above â†’ `FOLLOW_UP_SOON`.
-5. Otherwise â†’ `NURTURE`.
+1. Missing or invalid mandatory information → `REQUEST_DATA`.
+2. Overdue committed follow-up → `FOLLOW_UP_NOW`.
+3. Score of 70 or above → `FOLLOW_UP_NOW`.
+4. Score of 40 or above → `FOLLOW_UP_SOON`.
+5. Otherwise → `NURTURE`.
 
 These weights, thresholds, and rules are provisional implementation assumptions for the MVP, not externally validated sales benchmarks.
 
 ## 6. Sample Scenarios
+
+The application includes seeded sample scenarios for demonstrating the recommendation workflow.
 
 | Scenario | Expected recommendation | Expected score |
 |---|---|---:|
 | Hot | `FOLLOW_UP_NOW` | 95 |
 | Warm | `FOLLOW_UP_SOON` | 65 |
 | Stale | `NURTURE` | 0 |
+| Missing contact information | `REQUEST_DATA` | 0 |
 
 These are illustrative sample records, not live customer data.
 
 ## 7. Technology Stack
 
 **Backend**
+
 - Python 3.11
 - FastAPI
 - Pydantic
 - LangGraph (`StateGraph` conditional routing)
 - Pytest
+- Google Gemini integration (optional explanation enhancement)
 
 **Frontend**
+
 - React
 - TypeScript
 - Vite
 - CSS
 
 **Containerization and Deployment**
+
 - Docker
 - Docker Compose
 - Nginx (frontend static hosting and API reverse proxy)
@@ -183,41 +212,41 @@ These are illustrative sample records, not live customer data.
 
 ```text
 AA007-Lead-Follow-up-Prioritization-Intelligence/
-â”œâ”€â”€ backend/
-â”‚   â”œâ”€â”€ app/
-â”‚   â”‚   â”œâ”€â”€ agents/
-â”‚   â”‚   â”œâ”€â”€ api/
-â”‚   â”‚   â”œâ”€â”€ data/
-â”‚   â”‚   â”œâ”€â”€ models/
-â”‚   â”‚   â”œâ”€â”€ rules/
-â”‚   â”‚   â””â”€â”€ services/
-â”‚   â”‚       â”œâ”€â”€ workflow_service.py
-â”‚   â”‚       â”œâ”€â”€ workflow_graph.py
-â”‚   â”‚       â””â”€â”€ workflow_state.py
-â”‚   â”œâ”€â”€ tests/
-â”‚   â”œâ”€â”€ .dockerignore
-â”‚   â”œâ”€â”€ Dockerfile
-â”‚   â””â”€â”€ requirements.txt
-â”œâ”€â”€ frontend/
-â”‚   â”œâ”€â”€ public/
-â”‚   â”œâ”€â”€ src/
-â”‚   â”œâ”€â”€ .dockerignore
-â”‚   â”œâ”€â”€ Dockerfile
-â”‚   â”œâ”€â”€ nginx.conf
-â”‚   â”œâ”€â”€ package.json
-â”‚   â””â”€â”€ vite.config.ts
-â”œâ”€â”€ docs/
-â”‚   â””â”€â”€ architecture.md
-â”œâ”€â”€ docker-compose.yml
-â”œâ”€â”€ .gitignore
-â””â”€â”€ README.md
+├── backend/
+│   ├── app/
+│   │   ├── agents/
+│   │   ├── api/
+│   │   ├── data/
+│   │   ├── models/
+│   │   ├── rules/
+│   │   └── services/
+│   │       ├── workflow_service.py
+│   │       ├── workflow_graph.py
+│   │       └── workflow_state.py
+│   ├── tests/
+│   ├── .dockerignore
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   ├── .dockerignore
+│   ├── Dockerfile
+│   ├── nginx.conf
+│   ├── package.json
+│   └── vite.config.ts
+├── docs/
+│   └── architecture.md
+├── docker-compose.yml
+├── .gitignore
+└── README.md
 ```
 
 The backend workflow modules are:
 
-- `workflow_service.py` â€” invokes the compiled LangGraph workflow.
-- `workflow_graph.py` â€” defines the conditional-routing StateGraph and its outcome paths.
-- `workflow_state.py` â€” defines the shared state passed between graph nodes.
+- `workflow_service.py` — invokes the compiled LangGraph workflow.
+- `workflow_graph.py` — defines the conditional-routing StateGraph and its outcome paths.
+- `workflow_state.py` — defines the shared state passed between graph nodes.
 
 ## 9. Run Locally
 
@@ -257,12 +286,12 @@ Open the application:
 
 The Vite development server proxies `/api` requests to the backend on port 8002.
 
-
 ### Dockerized Local Run (Phase 1.3)
 
 The application can also run locally as two Docker containers using Docker Compose.
 
 **Container architecture:**
+
 - **Backend:** Python 3.11, FastAPI and Uvicorn, listening on port `8002` inside the container.
 - **Frontend:** React production build served by Nginx.
 - **API communication:** Nginx forwards frontend `/api/` requests to the backend service at `http://backend:8002`.
@@ -325,25 +354,21 @@ Nginx uses this variable to forward browser requests under `/api/` to the backen
 
 **Deployment validation:**
 
-| Check | Result |
-|---|---|
-| Public frontend URL | Passed |
-| Frontend static assets | Passed |
-| Direct backend health endpoint | Passed |
-| Backend health through frontend proxy | Passed |
-| Scenario listing and frontend loading | Passed |
-| Render deployment status | Live |
+The deployed application was checked after the Phase 3.1 changes.
 
-The public backend health endpoint returned:
-
-`{"status":"healthy","application":"AA007 Lead Follow-up Prioritization Intelligence","version":"1.0.0"}`
+- Public frontend loaded successfully.
+- Updated recommendation interface was visible.
+- Backend health endpoint was available.
+- All four seeded scenarios were exercised through the deployed frontend.
+- The four recommendation outcomes were returned as expected.
 
 **Operational limitations:**
 
 - Render free services may spin down after inactivity, resulting in a delay during the first request.
 - Audit records, including their complete execution traces, remain in process-local memory. They are not durable and may be lost when the backend restarts.
 - No persistent database or external audit storage has been configured.
-- The Gemini API key is configured securely as a backend environment secret in Render. It is not committed to GitHub. The local `backend/.env` file is excluded from Git, and `backend/.env.example` contains placeholder values only.
+- The Gemini API key is configured securely as a backend environment secret in Render. It is not committed to GitHub.
+- The local `backend/.env` file is excluded from Git, and `backend/.env.example` contains placeholder values only.
 
 ## 10. API Endpoints
 
@@ -354,44 +379,45 @@ The public backend health endpoint returned:
 | POST | `/api/leads/prioritize` | Prioritize a supplied lead |
 | POST | `/api/leads/scenarios/{scenario_name}/run` | Execute a seeded scenario |
 
-## 11. Testing
+## 11. Testing and Validation
 
-Backend tests:
+### Automated and Frontend Validation
 
-```bash
-cd backend
-python -m pytest -v
-```
+The following Phase 3.1 frontend validation was completed:
 
-Frontend production build:
+- TypeScript validation using `npx tsc --noEmit` — passed.
+- Frontend production build using `npm run build` — passed.
+- Docker frontend image rebuild — completed successfully.
+- Local Docker application — frontend and backend running.
+- Production Render application — updated interface verified.
 
-```bash
-cd frontend
-npm run build
-```
+The previously documented backend automated test result was 17 passed during Phase 2.3. This historical result should not be interpreted as a newly executed Phase 3.1 backend test run.
 
-Frontend lint:
+### Phase 3.1 Scenario Validation
 
-```bash
-cd frontend
-npm run lint
-```
+All four scenarios were tested through the local application and the deployed Render frontend.
 
-Current validation results:
+| Scenario | Expected recommendation | Score | Result |
+|---|---|---:|---|
+| HOT | `FOLLOW_UP_NOW` | 95 | Passed |
+| WARM | `FOLLOW_UP_SOON` | 65 | Passed |
+| STALE | `NURTURE` | 0 | Passed |
+| Missing contact | `REQUEST_DATA` | 0 | Passed |
 
-- Backend: 17 tests passed (Phase 2.3).
-- Frontend production build: passed.
-- Frontend ESLint: passed.
-- Hot, warm, and stale scenarios: manually tested successfully through the frontend.
-- Responsive layouts: verified at desktop, tablet, and mobile sizes.
+The HOT, WARM, and STALE scenarios completed the normal analytical workflow.
+
+The missing-contact scenario correctly followed the mandatory-data validation path and returned `REQUEST_DATA`. It stopped after the Lead Intake Agent rather than executing the remaining analytical agents. This is the expected incomplete-input behavior.
+
+The application displayed the corresponding recommendation explanations and suggested next actions.
 
 ### Docker Validation (Phase 1.3)
 
 The application was built and validated using Docker Compose.
 
 **Container status:**
-- `aa007-backend` â€” running and healthy.
-- `aa007-frontend` â€” running and healthy.
+
+- `aa007-backend` — running and healthy.
+- `aa007-frontend` — running and healthy.
 - Frontend published on host port `8080`.
 
 **Health and API checks:**
@@ -403,28 +429,11 @@ The application was built and validated using Docker Compose.
 | Scenario listing API | Passed |
 | Frontend-to-backend communication | Passed |
 
-**End-to-end scenario results:**
-
-| Scenario | Expected recommendation | Score | Result |
-|---|---|---:|---|
-| HOT | FOLLOW_UP_NOW | 95 | Passed |
-| WARM | FOLLOW_UP_SOON | 65 | Passed |
-| STALE | NURTURE | 0 | Passed |
-| Missing contact | REQUEST_DATA | 0 | Passed |
-
-The scenario responses included workflow context, agent execution outputs, explanations, and audit records. The seeded scenarios executed all five agents. The missing-contact scenario correctly stopped after Lead Intake Agent and skipped the remaining four agents.
-
-Backend automated tests were also run locally:
-
-`python -m pytest -q`
-
-**Result:** 17 passed (current Phase 2.3 backend test suite).
-
-**Audit limitation:** Audit records are stored in process memory and are not persistent across backend container restarts.
+Audit records are stored in process memory and are not persistent across backend container restarts.
 
 ## 12. Scope and Limitations
 
-### Current Post 2.3 Capabilities
+### Current Phase 3.1 Capabilities
 
 - Uses seeded sample data rather than a live CRM integration.
 - Uses five specialized deterministic agents for lead validation, analysis, and prioritization.
@@ -433,6 +442,8 @@ Backend automated tests were also run locally:
 - Uses Google Gemini as an optional, controlled explanation-enhancement service.
 - Validates LLM output and falls back to the original deterministic explanation on provider errors, timeouts, missing configuration, or invalid responses.
 - Records workflow execution, routing decisions, and Gemini provider/model/status/reason in the execution trace and audit record.
+- Presents clearer recommendation explanations and suggested next actions for all four recommendation outcomes.
+- Supports local Docker-based execution and cloud deployment on Render.
 - Does not automatically send messages or contact leads.
 
 ### Out of Scope
@@ -451,6 +462,7 @@ Backend automated tests were also run locally:
 - Scoring weights and thresholds are provisional MVP assumptions.
 - Recommendations support operational prioritization and are not guaranteed sales outcomes.
 - Sensitive personal profiling is excluded.
+- The application uses seeded sample scenarios and is not a production CRM integration.
 
 ## 13. Project Objective
 
@@ -458,6 +470,8 @@ The objective is to demonstrate a transparent, explainable, and testable multi-a
 
 The application combines five specialized deterministic agents, shared workflow context, LangGraph conditional routing, structured agent outputs, execution tracing, deterministic decision evidence, explanations, and auditability.
 
-Post 2.3 builds on the deterministic multi-agent and LangGraph conditional-routing workflow by introducing a controlled, fallback-safe Gemini explanation enhancement. Deterministic business decisions remain authoritative, while the existing frontend and API integration are preserved.
+The controlled Gemini enhancement introduced in Post 2.3 improves explanation readability while keeping deterministic business decisions authoritative.
 
-The project also demonstrates local Docker-based validation and cloud deployment on Render as part of the AA007 development journey.
+Phase 3.1 builds on this foundation by improving the business recommendation experience. Users receive clearer explanations and suggested next actions for each recommendation outcome, while the underlying deterministic workflow and API behavior remain unchanged.
+
+The project demonstrates the design, implementation, testing, local Docker validation, and Render deployment of a deterministic multi-agent lead prioritization application.
